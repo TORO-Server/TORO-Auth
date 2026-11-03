@@ -1,4 +1,4 @@
-//! Wiki の REST API (/api/docs/*)
+//! Wiki の REST API (api.torosaba.net/docs/*)
 
 mod common;
 
@@ -25,10 +25,7 @@ async fn raw_returns_decoded_content() {
     server.put_file(&encoded_jp_path(), "abc", &long_body);
 
     let res = server
-        .get(&format!(
-            "/api/docs/raw?path={}",
-            encode_uri_component(JP_PATH)
-        ))
+        .api_get(&format!("/docs/raw?path={}", encode_uri_component(JP_PATH)))
         .await;
     assert_eq!(res.status(), 200);
     let body: Value = res.json().await.unwrap();
@@ -37,8 +34,8 @@ async fn raw_returns_decoded_content() {
     assert_eq!(body["size"], long_body.len());
 
     let res = server
-        .get(&format!(
-            "/api/docs/raw?format=raw&path={}",
+        .api_get(&format!(
+            "/docs/raw?format=raw&path={}",
             encode_uri_component(JP_PATH)
         ))
         .await;
@@ -53,8 +50,8 @@ async fn raw_returns_decoded_content() {
 #[tokio::test]
 async fn raw_errors() {
     let server = start().await;
-    assert_eq!(server.get("/api/docs/raw").await.status(), 400);
-    assert_eq!(server.get("/api/docs/raw?path=missing").await.status(), 404);
+    assert_eq!(server.api_get("/docs/raw").await.status(), 400);
+    assert_eq!(server.api_get("/docs/raw?path=missing").await.status(), 404);
 }
 
 #[tokio::test]
@@ -65,7 +62,7 @@ async fn paths_outside_docs_never_reach_github() {
         let encoded = encode_uri_component(bad);
         assert_eq!(
             server
-                .get(&format!("/api/docs/raw?path={encoded}"))
+                .api_get(&format!("/docs/raw?path={encoded}"))
                 .await
                 .status(),
             400,
@@ -73,10 +70,9 @@ async fn paths_outside_docs_never_reach_github() {
         );
 
         let res = server
-            .client
-            .post(server.url("/api/docs/save"))
-            .header(header::COOKIE, &cookie)
-            .header(header::ORIGIN, WIKI_ORIGIN)
+            .api_client
+            .post(server.url("/docs/save"))
+            .bearer_auth(server.session_token(&cookie).await)
             .json(&json!({ "path": bad, "content": "x" }))
             .send()
             .await
@@ -92,8 +88,8 @@ async fn save_requires_login_and_permission() {
     let body = json!({ "path": "a", "content": "x" });
 
     let res = server
-        .client
-        .post(server.url("/api/docs/save"))
+        .api_client
+        .post(server.url("/docs/save"))
         .json(&body)
         .send()
         .await
@@ -105,8 +101,8 @@ async fn save_requires_login_and_permission() {
         JWT_SECRET,
     );
     let res = server
-        .client
-        .post(server.url("/api/docs/save"))
+        .api_client
+        .post(server.url("/docs/save"))
         .bearer_auth(readonly)
         .json(&body)
         .send()
@@ -122,10 +118,9 @@ async fn save_commits_as_the_discord_user() {
     server.put_file("docs/a.md", "old-sha", "old");
 
     let res = server
-        .client
-        .post(server.url("/api/docs/save"))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
+        .api_client
+        .post(server.url("/docs/save"))
+        .bearer_auth(server.session_token(&cookie).await)
         .json(
             &json!({ "path": "a", "content": "新しい本文", "sha": "old-sha", "message": "直した" }),
         )
@@ -166,10 +161,9 @@ async fn save_without_sha_uses_the_latest_and_new_files_have_none() {
 
     for (path, expected_sha) in [("a", json!("latest")), ("new-page", Value::Null)] {
         let res = server
-            .client
-            .post(server.url("/api/docs/save"))
-            .header(header::COOKIE, &cookie)
-            .header(header::ORIGIN, WIKI_ORIGIN)
+            .api_client
+            .post(server.url("/docs/save"))
+            .bearer_auth(server.session_token(&cookie).await)
             .json(&json!({ "path": path, "content": "x" }))
             .send()
             .await
@@ -196,10 +190,9 @@ async fn conflicts_keep_the_text_the_editor_looks_for() {
     server.put_file("docs/a.md", "current", "old");
 
     let res = server
-        .client
-        .post(server.url("/api/docs/save"))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
+        .api_client
+        .post(server.url("/docs/save"))
+        .bearer_auth(server.session_token(&cookie).await)
         .json(&json!({ "path": "a", "content": "x", "sha": "stale" }))
         .send()
         .await

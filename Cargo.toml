@@ -1,8 +1,8 @@
 [package]
 name = "toro-auth"
-version = "1.1.2"
+version = "1.2.0"
 edition = "2024"
-description = "TORO Server 共通認証 (auth.torosaba.net) と AI コネクタ (mcp.torosaba.net)"
+description = "TORO Server の共通認証 (auth)、REST API (api)、AI コネクタ (mcp)"
 publish = false
 
 [dependencies]

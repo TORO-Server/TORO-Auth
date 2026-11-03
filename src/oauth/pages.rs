@@ -1,6 +1,7 @@
 //! OAuth の HTML 画面
 
 use crate::auth::session::{Session, scope_allows_write};
+use crate::config::Config;
 use crate::template::{insert_block, render};
 
 pub struct Consent<'a> {
@@ -17,7 +18,7 @@ pub struct Consent<'a> {
 const WRITE_PERMISSION: &str = "<li>+ Wiki の編集と保存 (GitHub へのコミット。メンバーのみ)</li>";
 const NO_WRITE_PERMISSION: &str = "<li>- Wiki の編集は求めていません (読むだけ)</li>";
 
-pub fn consent(options: &Consent) -> String {
+pub fn consent(cfg: &Config, options: &Consent) -> String {
     let write_requested = scope_allows_write(options.scope);
     let section = match (options.session, options.approve_url) {
         (Some(session), Some(approve_url)) => {
@@ -67,10 +68,15 @@ pub fn consent(options: &Consent) -> String {
             NO_WRITE_PERMISSION
         },
     );
-    insert_block(&page, "USER_SECTION", &section)
+    cfg.fill_links(&insert_block(&page, "USER_SECTION", &section))
 }
 
-pub fn denied(client_name: &str, client_redirect: Option<&str>, retry_url: &str) -> String {
+pub fn denied(
+    cfg: &Config,
+    client_name: &str,
+    client_redirect: Option<&str>,
+    retry_url: &str,
+) -> String {
     let client_return = client_redirect.map_or_else(String::new, |url| {
         render(
             include_str!("../../assets/oauth/denied_return.html"),
@@ -81,12 +87,13 @@ pub fn denied(client_name: &str, client_redirect: Option<&str>, retry_url: &str)
         include_str!("../../assets/oauth/denied.html"),
         &[("CLIENT_NAME", client_name), ("RETRY_URL", retry_url)],
     );
-    insert_block(&page, "CLIENT_RETURN", &client_return)
+    cfg.fill_links(&insert_block(&page, "CLIENT_RETURN", &client_return))
 }
 
-pub fn invalid_request(message: &str) -> String {
-    render(
+pub fn invalid_request(cfg: &Config, message: &str) -> String {
+    let page = render(
         include_str!("../../assets/oauth/error.html"),
         &[("MESSAGE", message)],
-    )
+    );
+    cfg.fill_links(&page)
 }

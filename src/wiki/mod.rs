@@ -2,7 +2,7 @@
 //!
 //! - `path`: 原稿のパスの検査と正規化
 //! - `github`: GitHub API
-//! - `api`: ブラウザ向けの REST API (/api/docs/*)
+//! - `api`: REST API (api.torosaba.net/docs/*)
 //! - `search`: 全文検索
 
 pub mod api;

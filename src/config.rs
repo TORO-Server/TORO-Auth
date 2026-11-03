@@ -5,8 +5,12 @@ pub struct Config {
     pub port: u16,
     /// 認可サーバーの公開 URL (末尾の / なし)
     pub issuer: String,
+    /// REST API の公開 URL (末尾の / なし)
+    pub api_url: String,
     /// MCP サーバーの公開 URL (末尾の / なし)
     pub mcp_url: String,
+    /// Wiki の公開 URL (末尾の / なし)
+    pub wiki_url: String,
     /// Cookie 付きで API を呼べる Origin (他のサブドメインは信じない)
     pub cors_origins: Vec<String>,
 
@@ -83,7 +87,9 @@ impl Config {
                 &format!("{issuer}/api/auth/callback"),
             ),
             issuer,
+            api_url: trimmed("PUBLIC_API_URL", "https://api.torosaba.net"),
             mcp_url: trimmed("PUBLIC_MCP_URL", "https://mcp.torosaba.net"),
+            wiki_url: trimmed("PUBLIC_WIKI_URL", "https://wiki.torosaba.net"),
             cors_origins: or_default("CORS_ORIGINS", "https://wiki.torosaba.net")
                 .split(',')
                 .map(|origin| origin.trim().to_string())

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TORO サーバー 外部 AI 連携システム</title>
-  <link rel="icon" href="/_assets/favicon.svg">
-  <link rel="stylesheet" href="/_assets/mcp.css">
+  <link rel="icon" href="/_assets/favicon.svg?v={{V}}">
+  <link rel="stylesheet" href="/_assets/mcp.css?v={{V}}">
 </head>
 <body>
   <div class="map-bg" aria-hidden="true"></div>
@@ -24,7 +24,7 @@
           <path fill="#c8a860" d="M31 18h2v10h-2z"/>
           <path fill="#1f7a2e" d="M8 21h1v2H8zM18 24h1v2h-1zM46 22h1v2h-1zM56 25h1v2h-1z"/>
         </svg>
-        <p>mcp.torosaba.net</p>
+        <p>AI クライアントの接続先</p>
       </header>
 
       <nav class="win" aria-label="コマンド">
@@ -33,8 +33,9 @@
           <li><a href="#url">接続先を見る</a></li>
           <li><a href="#steps">つなぎ方を聞く</a></li>
           <li><a href="#tools">ツールを調べる</a></li>
-          <li><a href="https://wiki.torosaba.net/">Wiki へ行く</a></li>
-          <li><a href="https://auth.torosaba.net/">認証の窓口へ行く</a></li>
+          <li><a href="{{WIKI_URL}}/">Wiki へ行く</a></li>
+          <li><a href="{{AUTH_URL}}/">認証の窓口へ行く</a></li>
+          <li><a href="{{ROLES_PAGE}}">URL と役割を調べる</a></li>
         </ul>
       </nav>
 
@@ -57,7 +58,7 @@
       <h2 class="win-title">接続先</h2>
       <p>AI クライアントの接続設定に、次の URL を登録してください。OAuth の設定は自動で見つかります。</p>
       <div class="url-box">
-        <span class="url-text">https://mcp.torosaba.net/</span>
+        <span class="url-text">{{MCP_URL}}/</span>
         <button class="btn" type="button" id="copy-url">URL を写す</button>
       </div>
     </section>
@@ -70,11 +71,11 @@
           <ol>
             <li>[設定] → [コネクタ] (または [カスタムコネクタを追加]) を開きます。</li>
             <li>コネクタ名に <code>TORO Server AI Gateway</code> と入力します。</li>
-            <li>サーバー URL に <code>https://mcp.torosaba.net/</code> を入力し、[追加] を押します。</li>
+            <li>サーバー URL に <code>{{MCP_URL}}/</code> を入力し、[追加] を押します。</li>
             <li>開いた「連携の許可」の画面で承認すると、7 種類のツールが使えるようになります (未ログインなら先に Discord でログインします)。</li>
           </ol>
           <figure>
-            <img src="/_assets/claude_settings.webp" alt="Claude のコネクタの設定と認可の画面" loading="lazy">
+            <img src="/_assets/claude_settings.webp?v={{V}}" alt="Claude のコネクタの設定と認可の画面" loading="lazy">
             <figcaption>実際の画面: 接続できたコネクタと、7 つのツール</figcaption>
           </figure>
         </article>
@@ -84,11 +85,11 @@
           <ol>
             <li>[設定] → [プラグイン] → [カスタム MCP サーバーを追加] を開きます。</li>
             <li>名前に <code>TORO Server</code>、接続形式に [サーバー URL] を選びます。</li>
-            <li>サーバー URL に <code>https://mcp.torosaba.net/</code> を入力します (OAuth は自動で判別されます)。</li>
+            <li>サーバー URL に <code>{{MCP_URL}}/</code> を入力します (OAuth は自動で判別されます)。</li>
             <li>同意のチェックを入れて [プラグインとして作成] を押し、開いた「連携の許可」の画面で承認します。</li>
           </ol>
           <figure>
-            <img src="/_assets/chatgpt_settings.webp" alt="ChatGPT のプラグイン登録の画面" loading="lazy">
+            <img src="/_assets/chatgpt_settings.webp?v={{V}}" alt="ChatGPT のプラグイン登録の画面" loading="lazy">
             <figcaption>実際の画面: 接続できたプラグイン</figcaption>
           </figure>
         </article>
@@ -97,12 +98,12 @@
           <h3>その 3　Google Gemini</h3>
           <ol>
             <li>[連携アプリ] → [カスタムアプリを作成] を開きます。</li>
-            <li>接続先の URL に <code>https://mcp.torosaba.net/</code> を入力し、Google の確認へ進みます。</li>
+            <li>接続先の URL に <code>{{MCP_URL}}/</code> を入力し、Google の確認へ進みます。</li>
             <li>開いた「連携の許可」の画面で承認すると、7 種類のアクションが同期されます。</li>
             <li>チャットの中で <code>@Toro Server Ai Gateway</code> を呼び出して使います。</li>
           </ol>
           <figure>
-            <img src="/_assets/gemini_settings.webp" alt="Google Gemini のカスタムアプリの詳細画面" loading="lazy">
+            <img src="/_assets/gemini_settings.webp?v={{V}}" alt="Google Gemini のカスタムアプリの詳細画面" loading="lazy">
             <figcaption>実際の画面: 接続できたカスタムアプリと、同期されたアクション</figcaption>
           </figure>
         </article>
@@ -113,7 +114,7 @@
           <pre>{
   "mcpServers": {
     "toro-server": {
-      "url": "https://mcp.torosaba.net/"
+      "url": "{{MCP_URL}}/"
     }
   }
 }</pre>
@@ -160,7 +161,7 @@
 
     document.getElementById('copy-url').addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText('https://mcp.torosaba.net/');
+        await navigator.clipboard.writeText('{{MCP_URL}}/');
         say('接続先の URL を写し取った。AI クライアントの設定に貼り付けるがよい。');
       } catch {
         say('写し取れなかった。お手数だが、URL を選んでコピーしてほしい。');

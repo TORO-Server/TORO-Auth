@@ -10,7 +10,6 @@ use url::form_urlencoded;
 
 use crate::config::Config;
 use crate::template;
-use crate::util::{is_loopback_host, is_toro_host};
 
 /// 各機能に渡すリクエスト
 pub struct Ctx {
@@ -20,6 +19,8 @@ pub struct Ctx {
     pub headers: HeaderMap,
     /// ポートを除いた小文字のホスト名
     pub host: String,
+    /// 生のクエリ文字列
+    pub raw_query: String,
     /// Origin が、Cookie 付きのリクエストを受けてよい送り元か
     pub origin_trusted: bool,
     pub body: Bytes,
@@ -40,6 +41,7 @@ impl Ctx {
             .unwrap_or("");
         Self {
             origin_trusted: cfg.is_trusted_origin(origin),
+            raw_query: query.to_string(),
             method: parts.method.clone(),
             path: parts.uri.path().to_string(),
             query: form_urlencoded::parse(query.as_bytes())
@@ -156,7 +158,12 @@ pub fn pretty_json(mut headers: HeaderMap, data: &Value, status: u16) -> Respons
 }
 
 pub fn html(body: String, status: u16) -> Response {
-    respond(status, HeaderMap::new(), HTML_UTF8, body)
+    respond(
+        status,
+        HeaderMap::new(),
+        HTML_UTF8,
+        template::with_asset_version(&body),
+    )
 }
 
 /// ブラウザには HTML の、それ以外には JSON のエラーを返す
@@ -166,7 +173,12 @@ pub fn error(ctx: &Ctx, message: &str, status: u16) -> Response {
             include_str!("../assets/common/error.html"),
             &[("STATUS", &status.to_string()), ("MESSAGE", message)],
         );
-        return respond(status, cors_headers(ctx), HTML_UTF8, page);
+        return respond(
+            status,
+            cors_headers(ctx),
+            HTML_UTF8,
+            template::with_asset_version(&page),
+        );
     }
     json(ctx, &json!({ "error": message }), status)
 }
@@ -198,6 +210,22 @@ pub fn no_content(headers: HeaderMap) -> Response {
     res
 }
 
+/// 別のホストへ移った URL。308 なので POST も POST のまま届く
+pub fn moved(ctx: &Ctx, to: &str) -> Response {
+    let location = if ctx.raw_query.is_empty() {
+        to.to_string()
+    } else {
+        format!("{to}?{}", ctx.raw_query)
+    };
+    let mut res = Response::new(Body::empty());
+    *res.status_mut() = StatusCode::PERMANENT_REDIRECT;
+    *res.headers_mut() = cors_headers(ctx);
+    if let Ok(value) = HeaderValue::from_str(&location) {
+        res.headers_mut().insert(header::LOCATION, value);
+    }
+    res
+}
+
 /// 302。`location` は URL として正しいものだけを渡す
 pub fn redirect(location: &str) -> Response {
     let mut res = Response::new(Body::empty());
@@ -216,17 +244,5 @@ pub fn append_cookies(res: &mut Response, cookies: &[String]) {
         if let Ok(value) = HeaderValue::from_str(cookie) {
             res.headers_mut().append(header::SET_COOKIE, value);
         }
-    }
-}
-
-/// OpenAPI の servers に書く、このリクエストの公開 URL。知らないホスト名は信じない
-pub fn public_origin(ctx: &Ctx, fallback: &str) -> String {
-    if is_toro_host(&ctx.host) {
-        format!("https://{}", ctx.host)
-    } else if is_loopback_host(&ctx.host) {
-        let host = ctx.header(header::HOST);
-        format!("http://{host}")
-    } else {
-        fallback.to_string()
     }
 }

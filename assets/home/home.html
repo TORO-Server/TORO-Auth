@@ -4,45 +4,40 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TORO サーバー 共通認証</title>
-  <link rel="icon" href="/_assets/favicon.svg">
-  <link rel="stylesheet" href="/_assets/auth.css">
+  <link rel="icon" href="/_assets/favicon.svg?v={{V}}">
+  <link rel="stylesheet" href="/_assets/auth.css?v={{V}}">
 </head>
 <body>
   <div class="map-bg" aria-hidden="true"></div>
   <main class="screen">
-    <div class="win help" id="help" aria-live="polite">TORO サーバーの共通認証です。項目にカーソルを合わせると、説明が出ます。</div>
+    <div class="win help" id="help" aria-live="polite">TORO サーバーの共通認証です。ログインとトークンの発行は、ここで行います。</div>
 
     <div class="menu">
       <div class="menu-side">
         {{USER_BLOCK}}
 
         <section class="win">
-          <h2>API の一覧</h2>
+          <h2>3 つの窓口</h2>
           <ul class="items">
-            <li><span class="tag">GET</span><span><code>/api/auth/login</code><small>Discord でログインを始める</small></span></li>
-            <li><span class="tag">GET</span><span><code>/api/auth/me</code><small>ログイン中の利用者と権限</small></span></li>
-            <li><span class="tag post">POST</span><span><code>/api/auth/token</code><small>AI コネクタ用のトークンを発行</small></span></li>
-            <li><span class="tag">GET</span><span><code>/api/auth/logout</code><small>ログアウトする</small></span></li>
-            <li><span class="tag">GET</span><span><code>/oauth/authorize</code><small>OAuth 2.0 の認可 (PKCE)</small></span></li>
-            <li><span class="tag post">POST</span><span><code>/oauth/token</code><small>トークンの交換と更新</small></span></li>
-            <li><span class="tag">GET</span><span><code>/api/docs/raw</code><small>Wiki の原稿を読む</small></span></li>
-            <li><span class="tag post">POST</span><span><code>/api/docs/save</code><small>Wiki の原稿を保存する</small></span></li>
+            <li class="service"><a href="{{AUTH_URL}}/"><code>auth</code></a><span>だれなのかを確かめる<small>ログイン、トークンの発行、OAuth の認可 (いまの画面)</small></span></li>
+            <li class="service"><a href="{{API_URL}}/"><code>api</code></a><span>データを読み書きする<small>Wiki の原稿の取得と保存、OpenAPI の仕様書</small></span></li>
+            <li class="service"><a href="{{MCP_URL}}/"><code>mcp</code></a><span>AI クライアントがつなぐ<small>Remote MCP サーバーと、接続の手順</small></span></li>
           </ul>
+          <p class="muted" style="margin-top:6px;"><a href="{{ROLES_PAGE}}">URL と役割の正本 (Wiki)</a></p>
         </section>
       </div>
-
       <div class="menu-side">
         <nav class="win" aria-label="メニュー">
           <ul class="cmd">
-            <li><a href="https://wiki.torosaba.net/" data-help="TORO サーバーの Wiki を開きます。">Wiki</a></li>
-            <li><a href="https://mcp.torosaba.net/" data-help="AI クライアントをつなぐ手順の画面を開きます。">AI 連携</a></li>
-            <li><a href="/api/openapi.json" data-help="API の仕様 (OpenAPI 3.1) を開きます。">API 仕様</a></li>
+            <li><a href="{{WIKI_URL}}/" data-help="TORO サーバーの Wiki を開きます。">Wiki</a></li>
+            <li><a href="{{MCP_URL}}/" data-help="AI クライアントをつなぐ手順の画面を開きます。">AI 連携</a></li>
+            <li><a href="{{API_URL}}/openapi.json" data-help="API の仕様 (OpenAPI 3.1) を開きます。">API 仕様</a></li>
             <li><a href="{{LOGIN_LINK}}" data-help="Discord のアカウントでのログインを切り替えます。">{{LOGIN_LABEL}}</a></li>
           </ul>
         </nav>
         <div class="win">
           <h2>場所</h2>
-          <p>auth.torosaba.net</p>
+          <p>{{AUTH_URL}}</p>
         </div>
         <div class="win">
           <h2>状態</h2>

@@ -10,6 +10,7 @@ use crate::http::{self, Ctx};
 use crate::jwt;
 
 const CONNECTOR_TOKEN_LIFETIME: i64 = 90 * 86400;
+const SESSION_TOKEN_LIFETIME: i64 = 600;
 
 pub fn me(app: &App, ctx: &Ctx) -> Response {
     let body = match session::from_request(app, ctx) {
@@ -36,6 +37,29 @@ pub fn logout(ctx: &Ctx) -> Response {
     res
 }
 
+/// API を呼ぶための短い期限のトークン。セッションの Cookie は auth にしか届かないので、Wiki の画面はこれに換えて使う
+pub fn issue_session_token(app: &App, ctx: &Ctx) -> Response {
+    if ctx.method != Method::POST {
+        return http::error(ctx, "Method Not Allowed", 405);
+    }
+    let Some(session) = session::from_cookie_for_write(app, ctx) else {
+        return http::error(ctx, "Authentication required", 401);
+    };
+    let now = jwt::now();
+    let mut claims = session.claims;
+    claims.insert("purpose".into(), json!("api_session"));
+    claims.insert("iat".into(), json!(now));
+    claims.insert("exp".into(), json!(now + SESSION_TOKEN_LIFETIME));
+    http::json(
+        ctx,
+        &json!({
+            "token": jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret),
+            "expires_in": SESSION_TOKEN_LIFETIME,
+        }),
+        200,
+    )
+}
+
 /// 90 日トークンの発行。本人のブラウザからだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)
 pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     if ctx.method != Method::POST {
@@ -53,9 +77,8 @@ pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     claims.insert("exp".into(), json!(exp));
     let token = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
 
-    let issuer = &app.cfg.issuer;
-    let mcp_url = format!("{issuer}/api/mcp");
-    let schema_url = format!("{issuer}/api/openapi.json");
+    let mcp_url = format!("{}/", app.cfg.mcp_url);
+    let schema_url = format!("{}/openapi.json", app.cfg.api_url);
     http::json(
         ctx,
         &json!({
@@ -63,6 +86,7 @@ pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
             "token": token,
             "expires_at": iso8601(exp),
             "user": session.claims,
+            "services": app.cfg.services(),
             "connectors": {
                 "claude_mcp": {
                     "type": "mcp",

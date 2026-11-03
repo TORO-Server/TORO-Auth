@@ -106,7 +106,10 @@ fn issue_code(
 
     let code = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
     let Ok(mut target) = Url::parse(redirect_uri) else {
-        return http::html(pages::invalid_request("Invalid redirect_uri"), 400);
+        return http::html(
+            pages::invalid_request(&app.cfg, "Invalid redirect_uri"),
+            400,
+        );
     };
     set_param(&mut target, "code", &code);
     if let Some(state) = ctx.q("state").filter(|s| !s.is_empty()) {
@@ -133,7 +136,7 @@ fn denied_page(app: &App, ctx: &Ctx, client_name: &str, redirect_uri: &str) -> R
     });
     let retry_url = format!("/oauth/authorize?{}", ctx.query_without(&FLOW_PARAMS));
     http::html(
-        pages::denied(client_name, client_return.as_deref(), &retry_url),
+        pages::denied(&app.cfg, client_name, client_return.as_deref(), &retry_url),
         403,
     )
 }
@@ -142,18 +145,21 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
     let client_id = ctx.q("client_id").unwrap_or("AI Client");
     let Some(redirect_uri) = ctx.q("redirect_uri") else {
         return http::html(
-            pages::invalid_request("Missing required query parameter: \"redirect_uri\""),
+            pages::invalid_request(
+                &app.cfg,
+                "Missing required query parameter: \"redirect_uri\"",
+            ),
             400,
         );
     };
     if !client::is_valid_redirect_uri(redirect_uri) {
         return http::html(
-            pages::invalid_request("Query parameter \"redirect_uri\" is not allowed"),
+            pages::invalid_request(&app.cfg, "Query parameter \"redirect_uri\" is not allowed"),
             400,
         );
     }
     if let Some(problem) = pkce_problem(ctx, redirect_uri) {
-        return http::html(pages::invalid_request(problem), 400);
+        return http::html(pages::invalid_request(&app.cfg, problem), 400);
     }
     let client_name = client::display_name(client_id, redirect_uri);
 
@@ -194,15 +200,18 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         )
     });
 
-    let page = pages::consent(&pages::Consent {
-        client_name: &client_name,
-        redirect_target: &client::redirect_target_label(redirect_uri),
-        scope: ctx.q("scope").unwrap_or(DEFAULT_SCOPE),
-        session: session.as_ref(),
-        login_url: &login_url,
-        approve_url: approve_url.as_deref(),
-        deny_url: &deny_url,
-    });
+    let page = pages::consent(
+        &app.cfg,
+        &pages::Consent {
+            client_name: &client_name,
+            redirect_target: &client::redirect_target_label(redirect_uri),
+            scope: ctx.q("scope").unwrap_or(DEFAULT_SCOPE),
+            session: session.as_ref(),
+            login_url: &login_url,
+            approve_url: approve_url.as_deref(),
+            deny_url: &deny_url,
+        },
+    );
     let mut res = http::html(page, 200);
     res.headers_mut().insert(
         header::ACCESS_CONTROL_ALLOW_ORIGIN,

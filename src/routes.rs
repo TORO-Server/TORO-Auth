@@ -10,10 +10,11 @@ use axum::http::header::{self, HeaderValue};
 use axum::response::Response;
 use serde_json::json;
 
+use crate::config::Config;
 use crate::http::{self, Ctx};
-use crate::{App, auth, home, mcp, oauth, openapi, static_files, wiki};
+use crate::site::Role;
+use crate::{App, api, auth, home, mcp, oauth, openapi, static_files, wiki};
 
-const MCP_HOST: &str = "mcp.torosaba.net";
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn router(app: Arc<App>) -> Router {
@@ -66,7 +67,7 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
 
     let path = ctx.path.as_str();
 
-    // 稼働確認と、案内画面の画像
+    // 稼働確認と、画面の素材はどのホストでも同じ
     if path == "/healthz" {
         return Ok(http::json(ctx, &json!({ "ok": true }), 200));
     }
@@ -74,36 +75,24 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
         return Ok(res);
     }
 
-    // RFC 9728: 接続先に /mcp を登録したクライアントは、パスを付けて聞いてくる
-    if path.starts_with("/.well-known/oauth-protected-resource/") {
-        return Ok(oauth::metadata::protected_resource(app, ctx));
+    match app.cfg.role_of(&ctx.host) {
+        Role::Auth => route_auth(app, ctx).await,
+        Role::Api => Ok(route_api(app, ctx).await),
+        Role::Mcp => Ok(route_mcp(app, ctx).await),
     }
+}
 
-    // OAuth 2.0 / MCP の発見 (どのホストでも最優先)
-    match path {
-        "/.well-known/oauth-protected-resource" => {
-            return Ok(oauth::metadata::protected_resource(app, ctx));
-        }
-        "/.well-known/oauth-authorization-server" | "/.well-known/openid-configuration" => {
-            return Ok(oauth::metadata::authorization_server(app, ctx));
-        }
-        "/oauth/register" => return Ok(oauth::register::handle(ctx)),
-        "/oauth/authorize" => return Ok(oauth::authorize::handle(app, ctx)),
-        "/oauth/token" => return Ok(oauth::token::handle(app, ctx)),
-        "/oauth/userinfo" | "/userinfo" => return Ok(oauth::userinfo::handle(app, ctx)),
-        _ => {}
+fn not_found(ctx: &Ctx) -> Response {
+    http::json(ctx, &json!({ "error": "Not Found", "path": ctx.path }), 404)
+}
+
+/// auth: だれなのかを確かめる
+async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
+    let cfg = &app.cfg;
+    let path = ctx.path.as_str();
+    if let Some(moved) = moved_from_auth(cfg, path) {
+        return Ok(http::moved(ctx, &moved));
     }
-
-    // mcp.torosaba.net は、残りをすべて MCP として扱う
-    let is_mcp_path = path == "/api/mcp"
-        || path.starts_with("/api/mcp/")
-        || path == "/mcp"
-        || path.starts_with("/mcp/")
-        || path == "/sse";
-    if ctx.host == MCP_HOST || is_mcp_path {
-        return Ok(mcp::transport::handle(app, ctx).await);
-    }
-
     match path {
         "/" | "/index.html" => Ok(home::handle(app, ctx)),
 
@@ -112,16 +101,62 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
         "/api/auth/me" => Ok(auth::account::me(app, ctx)),
         "/api/auth/logout" => Ok(auth::account::logout(ctx)),
         "/api/auth/token" => Ok(auth::account::issue_token(app, ctx)),
+        "/api/auth/session-token" => Ok(auth::account::issue_session_token(app, ctx)),
 
-        "/api/docs/raw" => Ok(wiki::api::raw(app, ctx).await),
-        "/api/docs/save" => Ok(wiki::api::save(app, ctx).await),
+        "/.well-known/oauth-authorization-server" | "/.well-known/openid-configuration" => {
+            Ok(oauth::metadata::authorization_server(app, ctx))
+        }
+        "/oauth/register" => Ok(oauth::register::handle(ctx)),
+        "/oauth/authorize" => Ok(oauth::authorize::handle(app, ctx)),
+        "/oauth/token" => Ok(oauth::token::handle(app, ctx)),
+        "/oauth/userinfo" | "/userinfo" => Ok(oauth::userinfo::handle(app, ctx)),
 
-        "/api/openapi.json" | "/openapi.json" => Ok(openapi::handle(app, ctx)),
-
-        _ => Ok(http::json(
-            ctx,
-            &json!({ "error": "Not Found", "path": path }),
-            404,
-        )),
+        _ => Ok(not_found(ctx)),
     }
+}
+
+/// 以前 auth にあった URL の移り先
+fn moved_from_auth(cfg: &Config, path: &str) -> Option<String> {
+    let (api, mcp) = (&cfg.api_url, &cfg.mcp_url);
+    match path {
+        "/api/mcp" => Some(format!("{mcp}/")),
+        "/mcp" | "/sse" => Some(format!("{mcp}{path}")),
+        "/api/docs/raw" => Some(format!("{api}/docs/raw")),
+        "/api/docs/save" => Some(format!("{api}/docs/save")),
+        "/api/openapi.json" | "/openapi.json" => Some(format!("{api}/openapi.json")),
+        _ if path.starts_with("/.well-known/oauth-protected-resource") => {
+            Some(format!("{mcp}{path}"))
+        }
+        _ => None,
+    }
+}
+
+/// api: データを読み書きする
+async fn route_api(app: &App, ctx: &Ctx) -> Response {
+    match ctx.path.as_str() {
+        "/" => api::index(app, ctx),
+        "/me" => api::me(app, ctx),
+        "/docs/raw" => wiki::api::raw(app, ctx).await,
+        "/docs/save" => wiki::api::save(app, ctx).await,
+        "/openapi.json" => openapi::handle(app, ctx),
+        _ => not_found(ctx),
+    }
+}
+
+/// mcp: AI クライアントがつなぐ。認可の窓口は auth へ案内する
+async fn route_mcp(app: &App, ctx: &Ctx) -> Response {
+    let path = ctx.path.as_str();
+    // RFC 9728: 接続先に /mcp を登録したクライアントは、パスを付けて聞いてくる
+    if path == "/.well-known/oauth-protected-resource"
+        || path.starts_with("/.well-known/oauth-protected-resource/")
+    {
+        return oauth::metadata::protected_resource(app, ctx);
+    }
+    if path.starts_with("/oauth/")
+        || path == "/.well-known/oauth-authorization-server"
+        || path == "/.well-known/openid-configuration"
+    {
+        return http::moved(ctx, &format!("{}{path}", app.cfg.issuer));
+    }
+    mcp::transport::handle(app, ctx).await
 }

@@ -98,7 +98,7 @@ async fn metadata_is_served() {
     assert_eq!(openid, meta);
 
     let resource: Value = server
-        .get("/.well-known/oauth-protected-resource")
+        .mcp_get("/.well-known/oauth-protected-resource")
         .await
         .json()
         .await

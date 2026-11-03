@@ -329,32 +329,3 @@ async fn unknown_paths_are_json_404() {
     );
     assert_eq!(server.get("/healthz").await.status(), 200);
 }
-
-#[tokio::test]
-async fn openapi_uses_the_request_host_for_known_hosts_only() {
-    let server = start().await;
-    let spec = |host: &'static str| {
-        let client = server.client.clone();
-        let url = server.url("/api/openapi.json");
-        async move {
-            client
-                .get(url)
-                .header(header::HOST, host)
-                .send()
-                .await
-                .unwrap()
-                .json::<Value>()
-                .await
-                .unwrap()
-        }
-    };
-    assert_eq!(
-        spec("auth.torosaba.net").await["servers"][0]["url"],
-        "https://auth.torosaba.net"
-    );
-    assert_eq!(spec("evil.example").await["servers"][0]["url"], server.base);
-    assert_eq!(
-        spec("auth.torosaba.net").await["paths"]["/api/docs/save"]["post"]["operationId"],
-        "saveWikiDoc"
-    );
-}

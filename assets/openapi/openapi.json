@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "TORO Server Wiki & Auth API",
+    "title": "TORO Server API",
     "version": "1.0.0",
-    "description": "TORO Server 共通認証基盤および Wiki ドキュメント編集 API。Discord OAuth2 で認証した Bearer トークンを用いてドキュメントの読み取り・コミットが可能です。ChatGPT Actions や Gemini Extensions から利用できます。",
+    "description": "TORO Server の REST API。Wiki の原稿の読み取りとコミットができます。書き込みには auth.torosaba.net で発行した Bearer トークンが必要です。ChatGPT Actions や Gemini Extensions から利用できます。",
     "contact": {
       "name": "TORO Server Administration",
       "url": "https://wiki.torosaba.net"
@@ -12,11 +12,11 @@
   "servers": [
     {
       "url": "{{SERVER_URL}}",
-      "description": "TORO Server Auth Gateway"
+      "description": "TORO Server API"
     }
   ],
   "paths": {
-    "/api/docs/raw": {
+    "/docs/raw": {
       "get": {
         "summary": "Wiki ドキュメントの Markdown 原稿取得",
         "operationId": "getWikiDocRaw",
@@ -81,7 +81,7 @@
         }
       }
     },
-    "/api/docs/save": {
+    "/docs/save": {
       "post": {
         "summary": "Wiki ドキュメントの保存・GitHub コミット",
         "operationId": "saveWikiDoc",
@@ -160,11 +160,11 @@
         }
       }
     },
-    "/api/auth/me": {
+    "/me": {
       "get": {
         "summary": "現在の認証ユーザー情報取得",
         "operationId": "getAuthMe",
-        "description": "Bearer トークンまたは Cookie に基づく現在のユーザープロフィールと権限情報を返します。",
+        "description": "Bearer トークンの持ち主のプロフィールと権限情報を返します。",
         "security": [
           {
             "BearerAuth": []

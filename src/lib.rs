@@ -1,4 +1,4 @@
-//! TORO Server 共通認証 (auth.torosaba.net) と AI コネクタ (mcp.torosaba.net)。
+//! TORO Server の共通認証 (auth)、REST API (api)、AI コネクタ (mcp)。役割と URL は `site` を見てください。
 //!
 //! 機能ごとにモジュールを分けている:
 //! - `auth`: Discord ログイン、セッション、API トークン
@@ -8,9 +8,12 @@
 //! - `minecraft`: Minecraft サーバーの稼働状態の取得
 //! - `home` / `openapi` / `static_files`: 画面と仕様書
 //!
-//! 共通の部品は `config` / `http` / `jwt` / `template` / `util`、
+//! - `api`: api.torosaba.net の入り口
+//!
+//! 共通の部品は `config` / `site` / `http` / `jwt` / `template` / `util`、
 //! URL から各機能への振り分けは `routes` にある。
 
+pub mod api;
 pub mod auth;
 pub mod config;
 pub mod home;
@@ -21,6 +24,7 @@ pub mod minecraft;
 pub mod oauth;
 pub mod openapi;
 pub mod routes;
+pub mod site;
 pub mod static_files;
 pub mod template;
 pub mod util;

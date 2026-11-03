@@ -1,4 +1,4 @@
-//! ブラウザの Wiki エディタと OpenAPI から使う REST API
+//! api.torosaba.net の Wiki の原稿の API。認証は Bearer だけ (Cookie を見ないので CSRF は成り立たない)
 
 use axum::http::header::{self, HeaderMap, HeaderValue};
 use axum::response::Response;
@@ -10,7 +10,7 @@ use crate::App;
 use crate::auth::session;
 use crate::http::{self, Ctx};
 
-/// GET /api/docs/raw
+/// GET /docs/raw
 pub async fn raw(app: &App, ctx: &Ctx) -> Response {
     let Some(requested) = ctx.q("path").filter(|p| !p.is_empty()) else {
         return http::error(ctx, "Missing required query parameter \"path\"", 400);
@@ -37,14 +37,10 @@ pub async fn raw(app: &App, ctx: &Ctx) -> Response {
     }
 }
 
-/// POST /api/docs/save
+/// POST /docs/save
 pub async fn save(app: &App, ctx: &Ctx) -> Response {
-    let Some(user) = session::for_write(app, ctx) else {
-        return http::error(
-            ctx,
-            "Authentication required (please login with Discord)",
-            401,
-        );
+    let Some(user) = session::from_bearer(app, ctx) else {
+        return http::error(ctx, "Authentication required (Bearer token)", 401);
     };
     if !user.can_write() {
         return http::error(

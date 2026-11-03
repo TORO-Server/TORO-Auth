@@ -30,7 +30,7 @@ pub async fn call(app: &App, name: &str, args: &Value, session: Option<&Session>
         "wiki_save_page" => wiki::save_page(app, args, session).await,
         "wiki_search" => wiki::search(app, args).await,
         "server_get_status" => server::status(app).await,
-        "server_get_info" => server::info(),
+        "server_get_info" => server::info(app),
         "auth_get_identity" => identity::get(session),
         _ => failure(&format!("不明なツールです: {name}")),
     }

@@ -7,7 +7,7 @@
 //! - `from_bearer`: MCP など API のクライアント
 //! - `from_cookie`: ブラウザでの読み取りと、同意の画面
 //! - `from_cookie_for_write`: ブラウザでの変更 (Origin を確かめる。CSRF 対策)
-//! - `from_request` / `for_write`: Wiki の API のように、どちらも受け付けるもの
+//! - `from_request`: 自分の情報の確認のように、どちらも受け付けるもの
 
 use axum::http::header;
 use serde_json::{Map, Value};
@@ -131,11 +131,6 @@ pub fn from_cookie_for_write(app: &App, ctx: &Ctx) -> Option<Session> {
 /// 読み取り: Authorization: Bearer、次に Cookie
 pub fn from_request(app: &App, ctx: &Ctx) -> Option<Session> {
     from_bearer(app, ctx).or_else(|| from_cookie(app, ctx))
-}
-
-/// 変更: Authorization: Bearer、次に送り元を確かめた Cookie
-pub fn for_write(app: &App, ctx: &Ctx) -> Option<Session> {
-    from_bearer(app, ctx).or_else(|| from_cookie_for_write(app, ctx))
 }
 
 pub fn cookie(header_value: &str, name: &str) -> Option<String> {

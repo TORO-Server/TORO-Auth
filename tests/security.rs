@@ -180,40 +180,12 @@ async fn session_cookie_is_host_only_and_clears_the_old_ones() {
 }
 
 #[tokio::test]
-async fn wiki_save_rejects_cross_origin_cookie_requests() {
-    let server = start().await;
-    let cookie = server.login("member").await;
-    let body = r#"{"path":"defaced","content":"x"}"#;
-
-    // text/plain は、ブラウザが事前確認なしで送れる
-    let send = |origin: Option<&'static str>| {
-        let mut request = server
-            .client
-            .post(server.url("/api/docs/save"))
-            .header(header::COOKIE, &cookie)
-            .header(header::CONTENT_TYPE, "text/plain")
-            .body(body);
-        if let Some(origin) = origin {
-            request = request.header(header::ORIGIN, origin);
-        }
-        async move { request.send().await.unwrap().status().as_u16() }
-    };
-
-    assert_eq!(send(Some(SUBDOMAIN)).await, 401);
-    assert_eq!(send(None).await, 401);
-    assert!(server.github.commits.lock().unwrap().is_empty());
-
-    assert_eq!(send(Some(WIKI_ORIGIN)).await, 200);
-    assert_eq!(server.github.commits.lock().unwrap().len(), 1);
-}
-
-#[tokio::test]
 async fn mcp_ignores_cookies() {
     let server = start().await;
     let cookie = server.login("member").await;
 
     let res = server
-        .client
+        .mcp_client
         .post(server.url("/mcp"))
         .header(header::COOKIE, &cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
@@ -229,8 +201,12 @@ async fn mcp_ignores_cookies() {
     assert!(server.github.commits.lock().unwrap().is_empty());
 
     let discovery: Value = server
-        .get_with_cookie("/mcp", &cookie)
+        .mcp_client
+        .get(server.url("/mcp"))
+        .header(header::COOKIE, &cookie)
+        .send()
         .await
+        .unwrap()
         .json()
         .await
         .unwrap();
@@ -317,8 +293,8 @@ async fn read_scope_cannot_write() {
     assert!(is_error, "{text}");
 
     let res = server
-        .client
-        .post(server.url("/api/docs/save"))
+        .api_client
+        .post(server.url("/docs/save"))
         .bearer_auth(token("read"))
         .json(&args)
         .send()
@@ -430,7 +406,7 @@ async fn verifier_without_challenge_is_refused_and_response_carries_iss() {
 async fn personal_responses_are_not_cacheable() {
     let server = start().await;
     let cookie = server.login("member").await;
-    for path in ["/", "/api/auth/me", "/mcp"] {
+    for path in ["/", "/api/auth/me"] {
         let res = server.get_with_cookie(path, &cookie).await;
         assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path}");
     }
@@ -479,7 +455,7 @@ async fn approve_page_cannot_be_framed() {
 async fn large_bodies_are_refused() {
     let server = start().await;
     let res = server
-        .client
+        .mcp_client
         .post(server.url("/mcp"))
         .body(vec![b'x'; 2 * 1024 * 1024 + 1])
         .send()
@@ -493,7 +469,7 @@ async fn sse_streams_are_limited_and_released() {
     let server = start().await;
     let open = || {
         server
-            .client
+            .mcp_client
             .get(server.url("/sse"))
             .header(header::ACCEPT, "text/event-stream")
             .send()

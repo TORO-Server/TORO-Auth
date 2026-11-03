@@ -22,7 +22,10 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         || include_str!("../assets/home/guest.html").to_string(),
         session_block,
     );
-    let mut res = http::html(insert_block(&page, "USER_BLOCK", &block), 200);
+    let page = app
+        .cfg
+        .fill_links(&insert_block(&page, "USER_BLOCK", &block));
+    let mut res = http::html(page, 200);
     // トークン発行のボタンがあるので、枠に入れさせない
     res.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,

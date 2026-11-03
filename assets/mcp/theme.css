@@ -27,7 +27,8 @@ html {
 
 body {
   min-height: 100vh;
-  padding: 24px 16px;
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   color: var(--text);
   font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
   font-size: 16px;
@@ -124,7 +125,7 @@ a {
 .cmd:not(:hover):not(:focus-within) li:first-child > ::before {
   content: "";
   position: absolute;
-  top: 0.55em;
+  top: calc(50% - 7px);
   left: 4px;
   width: 12px;
   height: 14px;
@@ -306,7 +307,15 @@ footer {
 
 @media (max-width: 600px) {
   body {
-    padding: 20px 8px;
+    padding: max(20px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .message {
+    font-size: 16px;
+  }
+
+  .url-text {
+    font-size: 17px;
   }
 
   .win {
@@ -320,6 +329,21 @@ footer {
 
   .tool-need {
     text-align: left;
+  }
+}
+
+/* 指で押す端末: 押しやすい大きさにする */
+@media (pointer: coarse) {
+  .cmd a,
+  .cmd button {
+    min-height: 44px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: 8px 16px;
   }
 }
 

@@ -17,6 +17,11 @@ pub fn escape(input: &str) -> String {
     out
 }
 
+/// 画面の `{{V}}` に入れて、新しい版を出すたびにアセットの URL を変える (Cloudflare のキャッシュを確実に切り替える)
+pub fn with_asset_version(html: &str) -> String {
+    html.replace("{{V}}", env!("CARGO_PKG_VERSION"))
+}
+
 /// 値はすべてエスケープして埋め込む
 pub fn render(template: &str, vars: &[(&str, &str)]) -> String {
     let mut out = template.to_string();

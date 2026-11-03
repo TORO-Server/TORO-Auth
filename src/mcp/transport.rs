@@ -75,10 +75,7 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
     let session = session::from_bearer(app, ctx);
     let accept = ctx.header(header::ACCEPT);
     let path = ctx.path.as_str();
-    let is_dedicated_path = path == "/mcp"
-        || path.starts_with("/mcp/")
-        || path == "/api/mcp"
-        || path.starts_with("/api/mcp/");
+    let is_dedicated_path = path == "/mcp" || path.starts_with("/mcp/");
     let wants_json = accept.contains("application/json") || ctx.q("format") == Some("json");
 
     if !is_dedicated_path && !wants_json && accept.contains("text/html") {
@@ -86,7 +83,7 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
             200,
             http::public_headers(),
             http::HTML_UTF8,
-            guide::render_page(),
+            guide::render_page(&app.cfg),
         );
     }
 

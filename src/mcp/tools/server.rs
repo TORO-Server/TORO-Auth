@@ -35,15 +35,23 @@ pub async fn status(app: &App) -> Value {
     success(&lines.join("\n"))
 }
 
-pub fn info() -> Value {
-    success(
+pub fn info(app: &App) -> Value {
+    let cfg = &app.cfg;
+    success(&format!(
         "【TORO Server 各種サービス一覧】
 - 公式Webサイト: https://www.torosaba.net/
-- 公式Wiki: https://wiki.torosaba.net/
+- 公式Wiki: {wiki}/
 - 2Dワールドマップ: https://map.torosaba.net/
 - 3Dワールドマップ (BlueMap): https://3d-map.torosaba.net/
-- 認証・AIコネクタゲートウェイ: https://auth.torosaba.net/
-- Remote MCP サーバー: https://mcp.torosaba.net/
-- Minecraft 接続先: torosaba.net",
-    )
+- 認証 (ログイン、トークンの発行): {auth}/
+- REST API (Wiki の読み書き): {api}/
+- Remote MCP サーバー (AI クライアントの接続先): {mcp}/
+- Minecraft 接続先: torosaba.net
+- URL と役割の正本: {roles}",
+        wiki = cfg.wiki_url,
+        auth = cfg.issuer,
+        api = cfg.api_url,
+        mcp = cfg.mcp_url,
+        roles = cfg.roles_page(),
+    ))
 }

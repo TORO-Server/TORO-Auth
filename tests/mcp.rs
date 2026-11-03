@@ -90,7 +90,7 @@ async fn notifications_and_errors() {
 
     // id の無い未知の通知は黙って受ける
     let res = server
-        .client
+        .mcp_client
         .post(server.url("/mcp"))
         .json(&json!({ "jsonrpc": "2.0", "method": "notifications/other" }))
         .send()
@@ -99,7 +99,7 @@ async fn notifications_and_errors() {
     assert_eq!(res.status(), 202);
 
     let res = server
-        .client
+        .mcp_client
         .post(server.url("/mcp"))
         .body("{broken")
         .send()
@@ -114,7 +114,7 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
     let server = start().await;
     let request = |accept: &'static str| {
         server
-            .client
+            .mcp_client
             .get(server.url("/"))
             .header(header::HOST, MCP_HOST)
             .header(header::ACCEPT, accept)
@@ -145,7 +145,7 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
 
     // 専用のパスはブラウザでも JSON
     let res = server
-        .client
+        .mcp_client
         .get(server.url("/mcp"))
         .header(header::ACCEPT, "text/html")
         .send()
@@ -159,7 +159,7 @@ async fn mcp_host_still_serves_oauth_and_images() {
     let server = start().await;
     let on_mcp = |path: &str| {
         server
-            .client
+            .mcp_client
             .get(server.url(path))
             .header(header::HOST, MCP_HOST)
     };
@@ -172,12 +172,6 @@ async fn mcp_host_still_serves_oauth_and_images() {
         .await
         .unwrap();
     assert_eq!(meta["resource"], "https://mcp.torosaba.net");
-
-    let res = on_mcp("/oauth/authorize?code_challenge=abc&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fa.example%2F")
-        .send()
-        .await
-        .unwrap();
-    assert!(res.text().await.unwrap().contains("連携の許可"));
 
     for image in ["claude_settings", "chatgpt_settings", "gemini_settings"] {
         let res = on_mcp(&format!("/_assets/{image}.webp"))
@@ -203,7 +197,7 @@ async fn mcp_host_still_serves_oauth_and_images() {
 async fn sse_sends_the_endpoint_and_stays_open() {
     let server = start().await;
     let mut res = server
-        .client
+        .mcp_client
         .get(server.url("/sse"))
         .header(header::ACCEPT, "text/event-stream")
         .send()
@@ -398,7 +392,7 @@ async fn invalid_tokens_get_401_so_clients_can_reauthorize() {
         ));
 
         let res = server
-            .client
+            .mcp_client
             .get(server.url("/mcp"))
             .bearer_auth(token)
             .send()
@@ -426,7 +420,7 @@ async fn invalid_tokens_get_401_so_clients_can_reauthorize() {
 async fn resource_metadata_is_served_for_clients_using_a_path() {
     let server = start().await;
     let res = server
-        .client
+        .mcp_client
         .get(server.url("/.well-known/oauth-protected-resource/mcp"))
         .header(header::HOST, MCP_HOST)
         .send()
@@ -464,7 +458,7 @@ async fn theme_files_are_served_with_the_right_types() {
 async fn delete_is_not_supported() {
     let server = start().await;
     let res = server
-        .client
+        .mcp_client
         .delete(server.url("/mcp"))
         .send()
         .await

@@ -33,7 +33,8 @@ html {
 
 body {
   min-height: 100vh;
-  padding: 16px;
+  min-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   color: var(--text);
   font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
   font-size: 16px;
@@ -76,6 +77,7 @@ a {
 .screen-narrow {
   max-width: 600px;
   min-height: calc(100vh - 32px);
+  min-height: calc(100dvh - 32px);
   align-content: center;
 }
 
@@ -176,7 +178,7 @@ dt {
 .cmd:not(:hover):not(:focus-within) li:first-child > ::before {
   content: "";
   position: absolute;
-  top: 6px;
+  top: calc(50% - 9px);
   left: 0;
   width: 26px;
   height: 18px;
@@ -228,6 +230,10 @@ dt {
   font-size: 14px;
 }
 
+.items .service {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
 .tag {
   color: var(--good);
 }
@@ -245,7 +251,7 @@ textarea {
   background: #000020;
   border: 1px solid var(--edge-inner);
   font: inherit;
-  font-size: 14px;
+  font-size: 16px;
   resize: vertical;
 }
 
@@ -283,7 +289,12 @@ footer {
 
 @media (max-width: 720px) {
   body {
-    padding: 8px;
+    padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+
+  .screen-narrow {
+    min-height: calc(100vh - 16px);
+    min-height: calc(100dvh - 16px);
   }
 
   .menu,
@@ -299,6 +310,16 @@ footer {
   .portrait {
     width: 56px;
     height: 56px;
+  }
+}
+
+/* 指で押す端末: 押しやすい大きさにする */
+@media (pointer: coarse) {
+  .cmd a,
+  .cmd button {
+    min-height: 44px;
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 }
 

@@ -176,7 +176,12 @@ async fn start_fake_github(state: Arc<FakeGitHub>) -> String {
 
 pub struct TestServer {
     pub base: String,
+    /// auth として話す
     pub client: reqwest::Client,
+    /// api.torosaba.net として話す
+    pub api_client: reqwest::Client,
+    /// mcp.torosaba.net として話す
+    pub mcp_client: reqwest::Client,
     pub github: Arc<FakeGitHub>,
 }
 
@@ -208,7 +213,9 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
     let mut cfg = Config {
         port: 0,
         issuer: base.clone(),
+        api_url: "https://api.torosaba.net".into(),
         mcp_url: "https://mcp.torosaba.net".into(),
+        wiki_url: WIKI_ORIGIN.into(),
         cors_origins: vec![WIKI_ORIGIN.into()],
         jwt_secret: JWT_SECRET.into(),
         discord_client_id: "client".into(),
@@ -233,13 +240,25 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
     let router = toro_auth::routes::router(Arc::new(App::new(cfg).unwrap()));
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
 
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .unwrap();
+    let client_for = |host: Option<&'static str>| {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(host) = host {
+            headers.insert(
+                reqwest::header::HOST,
+                reqwest::header::HeaderValue::from_static(host),
+            );
+        }
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .default_headers(headers)
+            .build()
+            .unwrap()
+    };
     TestServer {
         base,
-        client,
+        client: client_for(None),
+        api_client: client_for(Some("api.torosaba.net")),
+        mcp_client: client_for(Some("mcp.torosaba.net")),
         github,
     }
 }
@@ -283,6 +302,29 @@ impl TestServer {
 
     pub async fn get(&self, path: &str) -> reqwest::Response {
         self.client.get(self.url(path)).send().await.unwrap()
+    }
+
+    pub async fn api_get(&self, path: &str) -> reqwest::Response {
+        self.api_client.get(self.url(path)).send().await.unwrap()
+    }
+
+    pub async fn mcp_get(&self, path: &str) -> reqwest::Response {
+        self.mcp_client.get(self.url(path)).send().await.unwrap()
+    }
+
+    /// Wiki の画面と同じように、Cookie を API 用の短いトークンに換える
+    pub async fn session_token(&self, cookie: &str) -> String {
+        let res = self
+            .client
+            .post(self.url("/api/auth/session-token"))
+            .header(header::COOKIE, cookie)
+            .header(header::ORIGIN, WIKI_ORIGIN)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        let body: Value = res.json().await.unwrap();
+        body["token"].as_str().unwrap().to_string()
     }
 
     pub async fn get_with_cookie(&self, path: &str, cookie: &str) -> reqwest::Response {
@@ -339,7 +381,7 @@ impl TestServer {
         bearer: Option<&str>,
     ) -> reqwest::Response {
         let mut request = self
-            .client
+            .mcp_client
             .post(self.url("/mcp"))
             .json(&json!({ "jsonrpc": "2.0", "id": 7, "method": method, "params": params }));
         if let Some(token) = bearer {

@@ -1,14 +1,28 @@
 # toro-auth
 
-TORO Server の共通認証 (auth.torosaba.net) と AI コネクタ (mcp.torosaba.net) です。Rust 製で、TORO のサーバーの上で動きます。
-Cloudflare Workers の toro-auth の置き換えで、公開している URL と応答の形はそのままです。
+TORO Server の認証、REST API、AI コネクタのサーバーです。Rust 製で、TORO のサーバーの上で動きます。
+
+## 3 つの窓口
+
+| URL | 役割 | ここにあるもの |
+| --- | --- | --- |
+| `https://auth.torosaba.net/` | だれなのかを確かめる | Discord ログイン、トークンの発行、OAuth 2.0 の認可 |
+| `https://api.torosaba.net/` | データを読み書きする | Wiki の原稿の取得と保存、OpenAPI の仕様書 |
+| `https://mcp.torosaba.net/` | AI クライアントがつなぐ | Remote MCP サーバーと、接続の手順 |
+
+ホストごとに、自分の役割の URL にだけ答えます (`src/routes.rs`)。以前の URL は正しいホストへ 308 で転送します。
+
+**URL の正本は 1 か所です。** 別の場所に書き写さないでください。
+
+- コード: `Config` (`src/config.rs`) だけが URL を持ち、画面も API の応答もここから作ります (`src/site.rs`)
+- プログラム向け: `https://api.torosaba.net/` の JSON
+- 人向け: Wiki の「サービスのURLと役割」のページ
 
 ```
 ブラウザ / AI クライアント → Cloudflare → cloudflared ─→ toro-auth:8080 ─┬─ Discord API (ログイン)
                                                                            ├─ GitHub API (Wiki の原稿)
                                                                            └─ toro-velocity:25565 (稼働状態)
 ```
-
 データベースは使いません。セッションもトークンも署名付きの JWT です。再起動して失うのは、使用済みの認可コードの記録 (有効期限は 5 分) だけです。
 
 ## 機能ごとの置き場所
@@ -21,7 +35,8 @@ Cloudflare Workers の toro-auth の置き換えで、公開している URL と
 | Remote MCP サーバーとツール | `src/mcp/` | `assets/mcp/` | `tests/mcp.rs` |
 | Minecraft の稼働状態 | `src/minecraft.rs` | | 同じファイル内 |
 | トップページ | `src/home.rs` | `assets/home/` | `tests/auth.rs` |
-| OpenAPI 仕様 | `src/openapi.rs` | `assets/openapi/` | `tests/auth.rs` |
+| REST API の入り口 | `src/api.rs` | | `tests/hosts.rs` |
+| OpenAPI 仕様 | `src/openapi.rs` | `assets/openapi/` | `tests/hosts.rs` |
 
 共通の部品: `src/routes.rs` (URL の振り分け)、`src/http.rs` (応答と CORS)、`src/jwt.rs`、`src/template.rs`、`src/config.rs`。
 
@@ -49,7 +64,7 @@ cargo test
 
 `tests/common/mod.rs` が偽の Discord と GitHub を立てるので、試験に秘密やネットワークは要りません。
 
-手元で動かすときは `.env.example` の必須の値を環境変数に入れ、`PUBLIC_AUTH_URL=http://localhost:8080` と、画面を動かす Origin を `CORS_ORIGINS` に足して `cargo run` します。
+手元で動かすときは `.env.example` の必須の値を環境変数に入れ、`PUBLIC_AUTH_URL=http://localhost:8080`、`PUBLIC_API_URL=http://api.localhost:8080`、`PUBLIC_MCP_URL=http://mcp.localhost:8080` と、画面を動かす Origin を `CORS_ORIGINS` に足して `cargo run` します。ブラウザは `*.localhost` を手元につなぎます。
 
 ## 設定
 
@@ -63,6 +78,7 @@ GitHub Actions が、試験に通ったものだけを GHCR に置きます (lin
 
 - **セッション Cookie は auth.torosaba.net だけのもの** (`__Host-`)。他のサブドメインのサーバーには渡らず、差し替えもできない。Wiki は同じサイトの fetch なので今までどおり届く
 - **Cookie で変更できるのは、信頼する Origin からだけ** (`CORS_ORIGINS` と自分自身)。他のサブドメインは信じない
+- **API は Bearer だけ**。Wiki の画面は Cookie を 10 分のトークンに換えて (`/api/auth/session-token`) API を呼ぶ
 - **MCP は Bearer だけ**。mcp.torosaba.net は Cookie を見ない
 - **トークンから新しいトークンは作れない**。90 日トークンの発行と OAuth の同意は、ブラウザのセッションが要る
 - **認可コードを出すのは、本人が同意画面で承認したときだけ**。承認のリンクはセッションと要求の内容に結び付けて署名してある
