@@ -270,17 +270,7 @@ async fn issue_token(server: &TestServer, cookie: &str) -> String {
 }
 
 async fn is_accepted(server: &TestServer, token: &str) -> bool {
-    let me: Value = server
-        .api_client
-        .get(server.url("/me"))
-        .bearer_auth(token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    me["authenticated"] == true
+    server.introspect(token).await.is_some()
 }
 
 #[tokio::test]

@@ -18,33 +18,28 @@ async fn main() {
             std::process::exit(2);
         }
     };
-    let port = cfg.port;
+    let (port, internal_port) = (cfg.port, cfg.internal_port);
     let app = Arc::new(App::new(cfg).expect("HTTP client"));
-
-    // 最初の検索を待たせないよう、原稿を先に読んでおく
-    let warm = app.clone();
-    tokio::spawn(async move {
-        warm.wiki_index.search(&warm, "").await;
-    });
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .expect("bind");
+    // api / mcp のトークンの確認を受ける。トンネルにもホストにも公開しない
+    let internal_listener = tokio::net::TcpListener::bind(("0.0.0.0", internal_port))
+        .await
+        .expect("bind internal");
     eprintln!(
-        "toro-auth {} listening on :{port}",
+        "toro-auth {} listening on :{port} (internal :{internal_port})",
         env!("CARGO_PKG_VERSION")
     );
 
-    let server = axum::serve(listener, toro_auth::routes::router(app))
+    let server = axum::serve(listener, toro_auth::routes::router(app.clone()))
         .with_graceful_shutdown(shutdown_signal());
-    // SSE は客が切るまで終わらないので、待つのは 5 秒まで
-    tokio::select! {
-        result = server => result.expect("server"),
-        _ = async {
-            shutdown_signal().await;
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        } => {}
-    }
+    let internal = axum::serve(internal_listener, toro_auth::internal::router(app))
+        .with_graceful_shutdown(shutdown_signal());
+    let (server, internal) = tokio::join!(server, internal);
+    server.expect("server");
+    internal.expect("internal server");
 }
 
 async fn shutdown_signal() {

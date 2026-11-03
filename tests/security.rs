@@ -180,40 +180,6 @@ async fn session_cookie_is_host_only_and_clears_the_old_ones() {
 }
 
 #[tokio::test]
-async fn mcp_ignores_cookies() {
-    let server = start().await;
-    let cookie = server.login("member").await;
-
-    let res = server
-        .mcp_client
-        .post(server.url("/mcp"))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
-        .json(&json!({
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": { "name": "wiki_save_page", "arguments": { "path": "x", "content": "y" } },
-        }))
-        .send()
-        .await
-        .unwrap();
-    let body: Value = res.json().await.unwrap();
-    assert_eq!(body["result"]["isError"], true);
-    assert!(server.github.commits.lock().unwrap().is_empty());
-
-    let discovery: Value = server
-        .mcp_client
-        .get(server.url("/mcp"))
-        .header(header::COOKIE, &cookie)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(discovery["authenticated"], false);
-}
-
-#[tokio::test]
 async fn brand_names_cannot_be_spoofed_on_the_consent_page() {
     let server = start().await;
     for (redirect, client_id) in [
@@ -277,7 +243,7 @@ async fn bearer_tokens_cannot_pass_the_consent_page() {
 }
 
 #[tokio::test]
-async fn read_scope_cannot_write() {
+async fn introspection_passes_the_scope_through_and_refuses_the_rest() {
     let server = start().await;
     let token = |scope: &str| {
         token_for(json!({
@@ -285,32 +251,22 @@ async fn read_scope_cannot_write() {
             "type": "mcp_access_token", "exp": jwt::now() + 60,
         }))
     };
-    let args = json!({ "path": "x", "content": "y" });
+    // scope は、api / mcp が書き込みを許すかどうかを決める材料としてそのまま渡る
+    let claims = server.introspect(&token("read")).await.unwrap();
+    assert_eq!(claims["scope"], "read");
+    assert_eq!(claims["can_edit"], true);
 
-    let (text, is_error) = server
-        .tool("wiki_save_page", args.clone(), Some(&token("read")))
-        .await;
-    assert!(is_error, "{text}");
-
-    let res = server
-        .api_client
-        .post(server.url("/docs/save"))
-        .bearer_auth(token("read"))
-        .json(&args)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 403);
-    assert!(server.github.commits.lock().unwrap().is_empty());
-
-    for scope in ["mcp", "read write"] {
-        let (text, is_error) = server
-            .tool("wiki_save_page", args.clone(), Some(&token(scope)))
-            .await;
-        assert!(!is_error, "{scope}: {text}");
+    // 認可コード、リフレッシュトークン、期限切れ、別の鍵で署名したものは通らない
+    for rejected in [
+        token_for(json!({ "id": "1", "type": "oauth_code", "exp": jwt::now() + 60 })),
+        token_for(json!({ "id": "1", "type": "mcp_refresh_token", "exp": jwt::now() + 60 })),
+        token_for(json!({ "id": "1", "username": "u", "exp": jwt::now() - 1 })),
+        jwt::sign(&json!({ "id": "1", "username": "u" }), "another-secret"),
+        "garbage".to_string(),
+    ] {
+        assert!(server.introspect(&rejected).await.is_none(), "{rejected}");
     }
 }
-
 #[tokio::test]
 async fn consent_page_shows_the_requested_scope() {
     let server = start().await;
@@ -455,45 +411,11 @@ async fn approve_page_cannot_be_framed() {
 async fn large_bodies_are_refused() {
     let server = start().await;
     let res = server
-        .mcp_client
-        .post(server.url("/mcp"))
+        .client
+        .post(server.url("/oauth/token"))
         .body(vec![b'x'; 2 * 1024 * 1024 + 1])
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 413);
-}
-
-#[tokio::test]
-async fn sse_streams_are_limited_and_released() {
-    let server = start().await;
-    let open = || {
-        server
-            .mcp_client
-            .get(server.url("/sse"))
-            .header(header::ACCEPT, "text/event-stream")
-            .send()
-    };
-
-    let mut streams = Vec::new();
-    for _ in 0..toro_auth::MAX_SSE_STREAMS {
-        let mut res = open().await.unwrap();
-        assert_eq!(res.status(), 200);
-        // 最初のイベントまで受けて、確かに始まったことを確かめる
-        res.chunk().await.unwrap().unwrap();
-        streams.push(res);
-    }
-    assert_eq!(open().await.unwrap().status(), 503);
-
-    drop(streams);
-    // 切断が伝わるのを待つ
-    let mut status = 0;
-    for _ in 0..50 {
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        status = open().await.unwrap().status().as_u16();
-        if status == 200 {
-            break;
-        }
-    }
-    assert_eq!(status, 200);
 }

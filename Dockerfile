@@ -1,4 +1,4 @@
-# toro-auth: auth.torosaba.net / mcp.torosaba.net (共通認証と AI コネクタ)
+# toro-auth: auth.torosaba.net (共通認証)
 #
 #   docker build -t toro-auth .
 #
@@ -23,6 +23,7 @@ COPY --from=compile /src/target/release/toro-auth /toro-auth
 COPY --from=compile --chown=65532:65532 /data-empty /data
 USER 65532:65532
 ENV PORT=8080
-EXPOSE 8080
+# 8080: 公開 (トンネルの行き先)。8081: api / mcp のトークンの確認。Docker の内側のネットワークだけに置き、公開しない
+EXPOSE 8080 8081
 HEALTHCHECK --interval=15s --timeout=4s --start-period=5s --retries=3 CMD ["/toro-auth", "healthcheck"]
 ENTRYPOINT ["/toro-auth"]

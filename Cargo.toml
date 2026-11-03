@@ -1,14 +1,13 @@
 [package]
 name = "toro-auth"
-version = "1.3.6"
+version = "2.0.0"
 edition = "2024"
-description = "TORO Server の共通認証 (auth)、REST API (api)、AI コネクタ (mcp)"
+description = "TORO Server の共通認証 (auth)"
 publish = false
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.23"
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
 hmac = "0.13"
 rand = "0.10"
 # scratch イメージで動かすので、CA 証明書は OS から読まない (rustls-tls = webpki-roots を埋め込む)
