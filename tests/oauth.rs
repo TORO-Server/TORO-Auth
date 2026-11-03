@@ -228,15 +228,13 @@ async fn token_endpoint_accepts_json_bodies() {
     let res = server
         .client
         .post(server.url("/oauth/token"))
-        .json(
-            &json!({
-                "grant_type": "authorization_code",
-                "code": code,
-                "code_verifier": VERIFIER,
-                "redirect_uri": CLIENT_REDIRECT,
-                "client_id": "toro-ai-1",
-            }),
-        )
+        .json(&json!({
+            "grant_type": "authorization_code",
+            "code": code,
+            "code_verifier": VERIFIER,
+            "redirect_uri": CLIENT_REDIRECT,
+            "client_id": "toro-ai-1",
+        }))
         .send()
         .await
         .unwrap();
