@@ -9,12 +9,12 @@ publish = false
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 base64 = "0.23"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-hmac = "0.12"
+hmac = "0.13"
 rand = "0.9"
 # scratch イメージで動かすので、CA 証明書は OS から読まない (rustls-tls = webpki-roots を埋め込む)
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-sha2 = "0.10"
+sha2 = "0.11"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time", "io-util"] }
 url = "2"
 
