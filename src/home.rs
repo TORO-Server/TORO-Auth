@@ -11,8 +11,8 @@ use crate::template::{insert_block, render};
 pub fn handle(app: &App, ctx: &Ctx) -> Response {
     let session = session::from_cookie(app, ctx);
     let (link, label) = match session {
-        Some(_) => ("/api/auth/logout", "LOGOUT"),
-        None => ("/api/auth/login", "LOGIN"),
+        Some(_) => ("/api/auth/logout", "ログアウト"),
+        None => ("/api/auth/login", "ログイン"),
     };
     let page = render(
         include_str!("../assets/home/home.html"),
@@ -32,10 +32,10 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
 }
 
 fn session_block(session: &Session) -> String {
-    let (edit_class, edit_label) = if session.can_edit() {
-        ("term-green", "[ENABLED] TORO SERVER MEMBER")
+    let (edit_class, edit_label, gauge_class) = if session.can_edit() {
+        ("good", "編集できます", "")
     } else {
-        ("term-yellow", "[READ ONLY] GUEST ACCESS")
+        ("warn", "読むだけ", "empty")
     };
     render(
         include_str!("../assets/home/session.html"),
@@ -45,6 +45,7 @@ fn session_block(session: &Session) -> String {
             ("ID", session.id()),
             ("EDIT_CLASS", edit_class),
             ("EDIT_LABEL", edit_label),
+            ("GAUGE_CLASS", gauge_class),
             ("ROLES", &session.role_count().to_string()),
         ],
     )

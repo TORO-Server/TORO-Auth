@@ -196,7 +196,7 @@ async fn logout_clears_cookies_in_both_formats() {
             .iter()
             .any(|c| c.starts_with("wiki_session=;"))
     );
-    assert!(res.text().await.unwrap().contains("SESSION TERMINATED"));
+    assert!(res.text().await.unwrap().contains("ログアウトしました"));
 }
 
 #[tokio::test]
@@ -301,7 +301,7 @@ async fn cors_allows_credentials_only_for_our_origins() {
 async fn home_shows_guest_and_session_and_escapes_names() {
     let server = start().await;
     let guest = server.get("/").await.text().await.unwrap();
-    assert!(guest.contains("AUTH SESSION: GUEST"));
+    assert!(guest.contains("未ログイン"));
     assert!(guest.contains("/api/auth/login"));
     assert!(!guest.contains("{{"));
 
@@ -312,7 +312,7 @@ async fn home_shows_guest_and_session_and_escapes_names() {
         .text()
         .await
         .unwrap();
-    assert!(page.contains("AUTH SESSION: ACTIVE"));
+    assert!(page.contains("ログイン中"));
     assert!(page.contains("&lt;img src=x onerror=alert(1)&gt;"));
     assert!(!page.contains("<img src=x"));
     assert!(!page.contains("{{"));

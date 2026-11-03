@@ -3,46 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORO SERVER - INVALID OAUTH REQUEST</title>
-  <style>
-    body {
-      background: #000000;
-      color: #ff3333;
-      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      margin: 0;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    .term-box {
-      background: #080808;
-      border: 3px double #ff3333;
-      max-width: 500px;
-      width: 100%;
-      padding: 20px;
-      text-align: center;
-    }
-    .term-header {
-      background: #ff3333;
-      color: #000000;
-      font-weight: bold;
-      padding: 4px;
-      margin-bottom: 14px;
-    }
-  </style>
+  <title>正しくない認可の要求 - TORO サーバー</title>
+  <link rel="icon" href="/_assets/favicon.svg">
+  <link rel="stylesheet" href="/_assets/auth.css">
 </head>
 <body>
-  <div class="term-box">
-    <div class="term-header">*** [400 BAD REQUEST] INVALID OAUTH 2.0 INVOCATION ***</div>
-    <p style="color:#ffffff; margin:16px 0;">{{MESSAGE}}</p>
-    <a href="https://mcp.torosaba.net/" style="display:inline-block; padding:6px 16px; background:#002200; color:#00ff00; border:1px solid #00ff00; text-decoration:none; font-weight:bold;">
-      [ RETURN TO MCP CONSOLE ]
-    </a>
-  </div>
+  <main class="screen screen-narrow">
+    <div class="win help bad">認可の要求が正しくありません (コード 400)</div>
+    <div class="win"><p>{{MESSAGE}}</p></div>
+    <nav class="win" aria-label="戻る">
+      <ul class="cmd">
+        <li><a href="https://mcp.torosaba.net/">AI 連携の案内へ戻る</a></li>
+      </ul>
+    </nav>
+  </main>
 </body>
 </html>

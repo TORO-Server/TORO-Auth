@@ -1,17 +1,26 @@
-<div class="panel-box">
-        <div class="panel-title">[ AUTH SESSION: ACTIVE (DISCORD SSO) ]</div>
-        <div class="panel-body">
-          <p><span class="term-cyan">&gt; USER NAME:</span> <span class="term-white">{{DISPLAY_NAME}} (@{{USERNAME}})</span></p>
-          <p><span class="term-cyan">&gt; DISCORD ID:</span> <span class="term-white">{{ID}}</span></p>
-          <p><span class="term-cyan">&gt; WIKI PERMISSION:</span> <span class="{{EDIT_CLASS}}">{{EDIT_LABEL}}</span></p>
-          <p><span class="term-cyan">&gt; ASSIGNED ROLES:</span> <span class="term-white">{{ROLES}} ROLES REGISTERED</span></p>
-          <div class="cmd-line" style="margin-top:12px; display:flex; gap:10px;">
-            <a href="/api/auth/logout" class="term-btn term-btn-red">[ LOGOUT SESSION ]</a>
-            <button class="term-btn term-btn-primary" onclick="generateToken()">[ ISSUE 90-DAY AI CONNECTOR TOKEN ]</button>
+        <section class="win" aria-label="ログイン中の利用者">
+          <div class="member">
+            <div class="portrait" aria-hidden="true"></div>
+            <div>
+              <p class="member-name">{{DISPLAY_NAME}} <span class="muted">@{{USERNAME}}</span></p>
+              <p class="good">ログイン中 (Discord)</p>
+              <div class="gauge {{GAUGE_CLASS}}" aria-hidden="true"><i></i></div>
+              <dl>
+                <dt>ID</dt><dd>{{ID}}</dd>
+                <dt>Wiki</dt><dd class="{{EDIT_CLASS}}">{{EDIT_LABEL}}</dd>
+                <dt>ロール</dt><dd>{{ROLES}} 個</dd>
+              </dl>
+            </div>
           </div>
-          <div id="token-display" style="display:none; margin-top:12px; padding:8px; background:#001a00; border:1px dashed #00ff00;">
-            <div style="font-size:11px; color:#ffff00; margin-bottom:4px;">&gt; GENERATED BEARER TOKEN (KEEP SECURE):</div>
-            <textarea id="token-val" readonly style="width:100%; height:60px; background:#000; color:#00ff00; border:1px solid #00aa00; font-family:inherit; font-size:11px; padding:4px; box-sizing:border-box;"></textarea>
-          </div>
-        </div>
-      </div>
+        </section>
+        <nav class="win" aria-label="ログイン中の操作">
+          <ul class="cmd">
+            <li><button type="button" id="issue-token" data-help="AI コネクタ用の、90 日間使えるトークンを発行します。">トークンを発行する</button></li>
+            <li><a href="/api/auth/logout" class="danger" data-help="このブラウザのログインを終わらせます。">ログアウトする</a></li>
+          </ul>
+        </nav>
+        <section class="win" id="token-win" hidden>
+          <h2>発行したトークン</h2>
+          <p class="warn">人に見せないでください。</p>
+          <textarea id="token-value" readonly aria-label="発行したトークン"></textarea>
+        </section>

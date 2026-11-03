@@ -147,8 +147,8 @@ async fn full_flow_from_guest_to_refresh() {
         .text()
         .await
         .unwrap();
-    assert!(page.contains("LOGIN VIA DISCORD"));
-    assert!(page.contains("TOKENS WILL BE SENT TO: https://claude.ai"));
+    assert!(page.contains("Discord でログイン"));
+    assert!(page.contains("トークンの送り先: https://claude.ai"));
     assert!(!page.contains("consent="));
     assert!(!page.contains("{{"));
 
@@ -165,12 +165,7 @@ async fn full_flow_from_guest_to_refresh() {
         .get_with_cookie(&authorize_path(CLIENT_REDIRECT, ""), &cookie)
         .await;
     assert_eq!(res.status(), 200);
-    assert!(
-        res.text()
-            .await
-            .unwrap()
-            .contains("APPROVE AI CLIENT INTEGRATION")
-    );
+    assert!(res.text().await.unwrap().contains("連携を承認する"));
 
     let code = get_code(&server, &cookie).await;
     let res = exchange(&server, &code).await;
@@ -483,7 +478,7 @@ async fn denial_page_offers_the_way_back_with_an_error() {
         .await;
     assert_eq!(res.status(), 403);
     let page = res.text().await.unwrap();
-    assert!(page.contains("AUTHORIZATION DENIED"));
+    assert!(page.contains("連携を拒否しました"));
     assert!(page.contains("https://claude.ai/api/mcp/auth_callback?error=access_denied"));
     assert!(!page.contains("{{"));
 }

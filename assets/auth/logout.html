@@ -3,70 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORO SERVER - SESSION TERMINATED</title>
-  <style>
-    body {
-      background: #000000;
-      color: #00ff00;
-      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      margin: 0;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    .term-box {
-      background: #080808;
-      border: 3px double #00ff00;
-      max-width: 480px;
-      width: 100%;
-      padding: 20px;
-      text-align: center;
-    }
-    .term-header {
-      background: #00ff00;
-      color: #000000;
-      font-weight: bold;
-      padding: 4px;
-      margin-bottom: 14px;
-    }
-    .term-btn {
-      display: inline-block;
-      padding: 6px 14px;
-      background: #002200;
-      color: #00ff00;
-      border: 1px solid #00ff00;
-      text-decoration: none;
-      font-weight: bold;
-      margin: 4px;
-    }
-    .term-btn:hover {
-      background: #00ff00;
-      color: #000;
-    }
-    .term-btn-primary {
-      background: #003322;
-      border-color: #00ffff;
-      color: #00ffff;
-    }
-    .term-btn-primary:hover {
-      background: #00ffff;
-      color: #000;
-    }
-  </style>
+  <title>ログアウト - TORO サーバー</title>
+  <link rel="icon" href="/_assets/favicon.svg">
+  <link rel="stylesheet" href="/_assets/auth.css">
 </head>
 <body>
-  <div class="term-box">
-    <div class="term-header">*** [200 OK] AUTHENTICATION SESSION TERMINATED ***</div>
-    <p style="color:#ffffff; margin:14px 0;">&gt; Discord SSO credentials and session cookies successfully purged from domain .torosaba.net.</p>
-    <div style="margin-top:16px;">
-      <a href="/api/auth/login" class="term-btn term-btn-primary">&gt;&gt; RE-AUTHENTICATE (DISCORD LOGIN)</a>
-      <a href="https://mcp.torosaba.net/" class="term-btn">[ RETURN TO MCP CONSOLE ]</a>
-    </div>
-  </div>
+  <main class="screen screen-narrow">
+    <div class="win help">ログアウトしました。おつかれさまでした。</div>
+    <div class="win"><p>このブラウザのログイン情報を消しました。</p></div>
+    <nav class="win" aria-label="次の操作">
+      <ul class="cmd">
+        <li><a href="/api/auth/login">もう一度ログインする</a></li>
+        <li><a href="https://auth.torosaba.net/">はじめの画面へ戻る</a></li>
+      </ul>
+    </nav>
+  </main>
 </body>
 </html>

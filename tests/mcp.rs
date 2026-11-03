@@ -177,7 +177,7 @@ async fn mcp_host_still_serves_oauth_and_images() {
         .send()
         .await
         .unwrap();
-    assert!(res.text().await.unwrap().contains("AUTHORIZATION REQUEST"));
+    assert!(res.text().await.unwrap().contains("連携の許可"));
 
     for image in ["claude_settings", "chatgpt_settings", "gemini_settings"] {
         let res = on_mcp(&format!("/_assets/{image}.webp"))
@@ -435,6 +435,29 @@ async fn resource_metadata_is_served_for_clients_using_a_path() {
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["resource"], "https://mcp.torosaba.net");
     assert!(body["authorization_servers"].is_array());
+}
+
+#[tokio::test]
+async fn theme_files_are_served_with_the_right_types() {
+    let server = start().await;
+    for (path, content_type) in [
+        ("/_assets/mcp.css", "text/css; charset=utf-8"),
+        ("/_assets/auth.css", "text/css; charset=utf-8"),
+        ("/_assets/pixel.woff2", "font/woff2"),
+        ("/_assets/favicon.svg", "image/svg+xml"),
+        ("/_assets/OFL.txt", "text/plain; charset=utf-8"),
+    ] {
+        let res = server.get(path).await;
+        assert_eq!(res.status(), 200, "{path}");
+        assert_eq!(res.headers()[header::CONTENT_TYPE], content_type, "{path}");
+        assert!(
+            res.headers()[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .starts_with("public")
+        );
+        assert!(!res.bytes().await.unwrap().is_empty());
+    }
 }
 
 #[tokio::test]

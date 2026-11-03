@@ -1,0 +1,311 @@
+/* auth.torosaba.net の画面: 青いグラデーションの窓、銀の枠、指のカーソル */
+
+@font-face {
+  font-family: "TORO Pixel";
+  src: url("/_assets/pixel.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --win-top: #3c50dc;
+  --win-mid: #1e2ca4;
+  --win-bottom: #0a1062;
+  --edge: #f0f0f8;
+  --edge-inner: #7078a8;
+  --text: #ffffff;
+  --muted: #b8c0f0;
+  --good: #7cf0b0;
+  --warn: #ffe070;
+  --bad: #ff9090;
+  --hand: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 11' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M0 2h8V1h8v4h-5v5H1V9H0z'/%3E%3Cpath fill='%23fff' d='M1 3h7V2h7v2H10v5H2V8H1z'/%3E%3Cpath fill='%23a8a8c0' d='M4 5h5v1H4zM4 7h5v1H4zM3 8h6v1H3z'/%3E%3C/svg%3E");
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #000;
+}
+
+body {
+  min-height: 100vh;
+  padding: 16px;
+  color: var(--text);
+  background: #000;
+  font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  text-shadow: 2px 2px 0 #000030;
+  -webkit-font-smoothing: none;
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: inherit;
+}
+
+/* 窓 */
+.win {
+  position: relative;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, var(--win-top) 0%, var(--win-mid) 45%, var(--win-bottom) 100%);
+  border: 3px solid var(--edge);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #000, inset 0 0 0 2px var(--edge-inner), inset 0 0 0 3px #101858;
+}
+
+.win h2 {
+  margin-bottom: 6px;
+  font-size: 16px;
+  font-weight: normal;
+  color: var(--warn);
+}
+
+.screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.screen-narrow {
+  max-width: 600px;
+  min-height: calc(100vh - 32px);
+  align-content: center;
+}
+
+/* 上の説明の窓 */
+.help {
+  min-height: 3em;
+  display: flex;
+  align-items: center;
+}
+
+/* メニューの画面 */
+.menu {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 248px;
+  gap: 8px;
+  align-items: start;
+}
+
+.menu-side {
+  display: grid;
+  gap: 8px;
+}
+
+/* 仲間の欄 */
+.member {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.portrait {
+  width: 72px;
+  height: 72px;
+  background: url("/_assets/favicon.svg") center / contain no-repeat;
+  image-rendering: pixelated;
+}
+
+.member-name {
+  font-size: 20px;
+}
+
+.member dl,
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 14px;
+}
+
+dt {
+  color: var(--muted);
+}
+
+.gauge {
+  height: 8px;
+  margin: 4px 0 8px;
+  background: #000;
+  border: 1px solid var(--edge);
+}
+
+.gauge i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(180deg, #a0ffd0, #28a070);
+}
+
+.gauge.empty i {
+  width: 12%;
+  background: linear-gradient(180deg, #ffe070, #c08020);
+}
+
+/* コマンド */
+.cmd {
+  list-style: none;
+}
+
+.cmd a,
+.cmd button {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 3px 0 3px 32px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-decoration: none;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+
+.cmd a:hover::before,
+.cmd a:focus-visible::before,
+.cmd button:hover::before,
+.cmd button:focus-visible::before,
+.cmd:not(:hover):not(:focus-within) li:first-child > ::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 0;
+  width: 26px;
+  height: 18px;
+  background: var(--hand) center / contain no-repeat;
+  image-rendering: pixelated;
+  animation: nudge 0.6s steps(2) infinite;
+}
+
+.cmd a:focus-visible,
+.cmd button:focus-visible {
+  outline: 1px dashed var(--warn);
+  outline-offset: -1px;
+}
+
+.cmd .danger {
+  color: var(--bad);
+}
+
+@keyframes nudge {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(3px);
+  }
+}
+
+/* 持ち物の一覧 */
+.items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 24px;
+  list-style: none;
+}
+
+.items li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.items code {
+  font: inherit;
+  color: var(--warn);
+}
+
+.items small {
+  display: block;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.tag {
+  color: var(--good);
+}
+
+.tag.post {
+  color: var(--warn);
+}
+
+textarea {
+  width: 100%;
+  height: 84px;
+  margin-top: 6px;
+  padding: 6px;
+  color: var(--good);
+  background: #000020;
+  border: 1px solid var(--edge-inner);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.good {
+  color: var(--good);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.center {
+  text-align: center;
+}
+
+.perm-list {
+  list-style: none;
+}
+
+footer {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 8px;
+  }
+
+  .menu,
+  .items {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .member {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .portrait {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmd a::before,
+  .cmd button::before,
+  .cmd li > ::before {
+    animation: none !important;
+  }
+}

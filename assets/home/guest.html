@@ -1,10 +1,16 @@
-<div class="panel-box">
-        <div class="panel-title">[ AUTH SESSION: GUEST (UNAUTHENTICATED) ]</div>
-        <div class="panel-body">
-          <p class="term-yellow">&gt; WARNING: No active Discord session detected.</p>
-          <p>&gt; Wiki browser editing and AI connector write tokens require verified Discord membership.</p>
-          <div class="cmd-line" style="margin-top:12px;">
-            <a href="/api/auth/login" class="term-btn term-btn-primary">&gt;&gt; EXECUTE DISCORD OAUTH2 LOGIN</a>
+        <section class="win" aria-label="ログインの状態">
+          <div class="member">
+            <div class="portrait" aria-hidden="true"></div>
+            <div>
+              <p class="member-name">旅の人</p>
+              <p class="warn">未ログイン</p>
+              <div class="gauge empty" aria-hidden="true"><i></i></div>
+              <p>Wiki の編集と AI コネクタの書き込みには、TORO サーバーの Discord メンバーとしてのログインが必要です。</p>
+            </div>
           </div>
-        </div>
-      </div>
+        </section>
+        <nav class="win" aria-label="ログイン">
+          <ul class="cmd">
+            <li><a href="/api/auth/login" data-help="Discord のアカウントでログインします。">Discord でログイン</a></li>
+          </ul>
+        </nav>

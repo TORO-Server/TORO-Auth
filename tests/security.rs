@@ -252,14 +252,8 @@ async fn brand_names_cannot_be_spoofed_on_the_consent_page() {
             .text()
             .await
             .unwrap();
-        assert!(
-            page.contains("REQUESTING CLIENT: UNVERIFIED:"),
-            "{redirect}"
-        );
-        assert!(
-            page.contains("TOKENS WILL BE SENT TO: https://"),
-            "{redirect}"
-        );
+        assert!(page.contains("要求元: 未確認:"), "{redirect}");
+        assert!(page.contains("トークンの送り先: https://"), "{redirect}");
     }
     let page = server
         .get(&authorize_path(
@@ -270,7 +264,7 @@ async fn brand_names_cannot_be_spoofed_on_the_consent_page() {
         .text()
         .await
         .unwrap();
-    assert!(page.contains("REQUESTING CLIENT: Claude"));
+    assert!(page.contains("要求元: Claude"));
 }
 
 #[tokio::test]
@@ -284,7 +278,7 @@ async fn client_id_cannot_expand_template_blocks() {
         .text()
         .await
         .unwrap();
-    assert_eq!(page.matches("APPROVE AI CLIENT INTEGRATION").count(), 1);
+    assert_eq!(page.matches("連携を承認する").count(), 1);
 }
 
 #[tokio::test]
@@ -302,7 +296,7 @@ async fn bearer_tokens_cannot_pass_the_consent_page() {
         .text()
         .await
         .unwrap();
-    assert!(page.contains("LOGIN VIA DISCORD"));
+    assert!(page.contains("Discord でログイン"));
     assert!(!page.contains("consent="));
 }
 
@@ -346,14 +340,14 @@ async fn consent_page_shows_the_requested_scope() {
     let server = start().await;
     let path = format!("{}&scope=read", authorize_path("https://a.example/cb", "x"));
     let page = server.get(&path).await.text().await.unwrap();
-    assert!(page.contains("REQUESTED SCOPE: read"));
-    assert!(page.contains("not requested (read only)"));
-    assert!(!page.contains("direct commit to repository"));
+    assert!(page.contains("求める権限: read"));
+    assert!(page.contains("Wiki の編集は求めていません"));
+    assert!(!page.contains("Wiki の編集と保存"));
     assert!(!page.contains("{{"));
 
     let path = format!("{}&scope=mcp", authorize_path("https://a.example/cb", "x"));
     let page = server.get(&path).await.text().await.unwrap();
-    assert!(page.contains("direct commit to repository"));
+    assert!(page.contains("Wiki の編集と保存"));
 }
 
 #[tokio::test]
@@ -375,12 +369,7 @@ async fn pkce_is_mandatory_with_s256_except_for_google_linking() {
         .get(&format!("/oauth/authorize?redirect_uri={google}"))
         .await;
     assert_eq!(res.status(), 200);
-    assert!(
-        res.text()
-            .await
-            .unwrap()
-            .contains("REQUESTING CLIENT: Google Gemini")
-    );
+    assert!(res.text().await.unwrap().contains("要求元: Google Gemini"));
 
     let meta: Value = server
         .get("/.well-known/oauth-authorization-server")
@@ -481,6 +470,7 @@ async fn approve_page_cannot_be_framed() {
     let logged_in = server.get_with_cookie(&path, &cookie).await;
     assert!(csp(&logged_in).contains("frame-ancestors 'none'"));
     assert!(csp(&logged_in).contains("default-src 'none'"));
+    assert!(csp(&logged_in).contains("font-src 'self'"));
 
     assert!(csp(&server.get("/").await).contains("frame-ancestors 'none'"));
 }

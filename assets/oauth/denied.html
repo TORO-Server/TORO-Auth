@@ -3,103 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORO SERVER - ACCESS DENIED</title>
-  <style>
-    body {
-      background: #000000;
-      color: #ff3333;
-      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      margin: 0;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    .term-box {
-      background: #080808;
-      border: 3px double #ff3333;
-      max-width: 520px;
-      width: 100%;
-      padding: 20px;
-      text-align: center;
-    }
-    .term-header {
-      background: #ff3333;
-      color: #000000;
-      font-weight: bold;
-      padding: 4px;
-      margin-bottom: 14px;
-      font-size: 13px;
-    }
-    .alert-box {
-      background: #220000;
-      border: 1px solid #ff3333;
-      padding: 12px;
-      margin: 14px 0;
-      text-align: left;
-      color: #ff9999;
-      font-size: 12px;
-    }
-    .action-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 16px 0;
-    }
-    .term-btn {
-      display: block;
-      width: 100%;
-      padding: 8px 12px;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: bold;
-      text-decoration: none;
-      text-align: center;
-      box-sizing: border-box;
-      cursor: pointer;
-    }
-    .btn-retry {
-      background: #002200;
-      color: #00ff00;
-      border: 1px solid #00ff00;
-    }
-    .btn-retry:hover { background: #00ff00; color: #000; }
-    .btn-top {
-      background: #111111;
-      color: #aaaaaa;
-      border: 1px solid #555555;
-    }
-    .btn-top:hover { background: #333333; color: #fff; }
-  </style>
+  <title>連携を拒否しました - TORO サーバー</title>
+  <link rel="icon" href="/_assets/favicon.svg">
+  <link rel="stylesheet" href="/_assets/auth.css">
 </head>
 <body>
-  <div class="term-box">
-    <div class="term-header">*** [403 FORBIDDEN] AUTHORIZATION REQUEST REJECTED ***</div>
-    <div style="color:#ffff00; font-weight:bold; margin-bottom:8px;">TARGET CLIENT: {{CLIENT_NAME}}</div>
-
-    <div class="alert-box">
-      <p style="color:#ffffff; font-weight:bold; margin-bottom:4px;">&gt; STATUS: AUTHORIZATION DENIED</p>
-      <p>&gt; Operator explicitly rejected or cancelled the connection approval.</p>
-      <p>&gt; Security policy active: Zero access tokens issued. No user scopes granted.</p>
-    </div>
-
-    <div class="action-grid">
-      {{CLIENT_RETURN}}
-      <a href="{{RETRY_URL}}" target="_top" class="term-btn btn-retry">
-        [ RE-ATTEMPT AUTHORIZATION WORKFLOW ]
-      </a>
-      <a href="https://mcp.torosaba.net/" target="_top" class="term-btn btn-top">
-        [ RETURN TO TORO SERVER MCP CONSOLE ]
-      </a>
-    </div>
-
-    <div style="font-size:11px; color:#666; margin-top:10px;">
-      SYSTEM RFC 6749 OAUTH 2.0 ERROR CODE: access_denied
-    </div>
-  </div>
+  <main class="screen screen-narrow">
+    <div class="win help warn">連携を拒否しました</div>
+    <section class="win">
+      <p>対象: {{CLIENT_NAME}}</p>
+      <p>トークンは発行していません。権限も与えていません。</p>
+      <p class="muted">OAuth のエラーコード: access_denied</p>
+    </section>
+    <nav class="win" aria-label="次の操作">
+      <ul class="cmd">
+        {{CLIENT_RETURN}}
+        <li><a href="{{RETRY_URL}}" target="_top">もう一度やり直す</a></li>
+        <li><a href="https://mcp.torosaba.net/" target="_top">AI 連携の案内へ戻る</a></li>
+      </ul>
+    </nav>
+  </main>
 </body>
 </html>

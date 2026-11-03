@@ -1,0 +1,336 @@
+/* mcp.torosaba.net の画面: 草原の上に、黒地に白い角丸枠の窓とコマンド */
+
+@font-face {
+  font-family: "TORO Pixel";
+  src: url("/_assets/pixel.woff2") format("woff2");
+  font-display: swap;
+}
+
+:root {
+  --text: #ffffff;
+  --muted: #c8c8c8;
+  --accent: #ffe860;
+  --good: #70f070;
+  --link: #80d8ff;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #1f7a2e;
+}
+
+body {
+  min-height: 100vh;
+  padding: 24px 16px;
+  color: var(--text);
+  background-color: #2a8c38;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%232a8c38'/%3E%3Cpath fill='%231f7a2e' d='M2 3h1v2H2zM3 4h1v1H3zM10 1h1v2h-1zM11 2h1v1h-1zM6 9h1v2H6zM7 10h1v1H7zM13 11h1v2h-1zM14 12h1v1h-1z'/%3E%3Cpath fill='%2348b050' d='M5 5h1v1H5zM12 6h1v1h-1zM2 12h1v1H2zM9 13h1v1H9z'/%3E%3C/svg%3E");
+  background-size: 48px 48px;
+  image-rendering: pixelated;
+  font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
+  font-size: 16px;
+  line-height: 1.75;
+  letter-spacing: 0.04em;
+  -webkit-font-smoothing: none;
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: var(--link);
+}
+
+.screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* 窓 */
+.win {
+  position: relative;
+  padding: 18px 20px 14px;
+  background: #000;
+  border: 4px solid #fff;
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px #000;
+}
+
+.win-title {
+  position: absolute;
+  top: -0.95em;
+  left: 18px;
+  padding: 0 8px;
+  background: #000;
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 1.5;
+}
+
+/* 上の段: 題、コマンド、状態 */
+.top {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 240px;
+  gap: 20px;
+}
+
+.title h1 {
+  font-size: 17px;
+  font-weight: normal;
+  line-height: 1.5;
+}
+
+.title p {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.scene {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  height: auto;
+  margin: 8px 0 2px;
+  border: 2px solid #fff;
+}
+
+.cmd {
+  list-style: none;
+}
+
+.cmd a,
+.cmd button {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 2px 0 2px 26px;
+  color: var(--text);
+  background: none;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cmd a:hover::before,
+.cmd a:focus-visible::before,
+.cmd button:hover::before,
+.cmd button:focus-visible::before,
+.cmd:not(:hover):not(:focus-within) li:first-child > ::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: 4px;
+  width: 12px;
+  height: 14px;
+  background: #fff;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  animation: blink 0.8s steps(2, jump-none) infinite;
+}
+
+.cmd a:focus-visible,
+.cmd button:focus-visible {
+  outline: 2px dotted var(--accent);
+  outline-offset: -2px;
+}
+
+@keyframes blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 12px;
+}
+
+.stats dd {
+  text-align: right;
+}
+
+/* 下から語りかける窓 */
+.message {
+  min-height: 6.2em;
+  padding-right: 40px;
+  font-size: 17px;
+}
+
+.message::after {
+  content: "\25BC";
+  position: absolute;
+  right: 16px;
+  bottom: 8px;
+  animation: blink 0.8s steps(2, jump-none) infinite;
+}
+
+/* あいことばの窓 */
+.url-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  margin-top: 6px;
+}
+
+.url-text {
+  color: var(--accent);
+  font-size: 20px;
+}
+
+.btn {
+  padding: 2px 14px;
+  color: var(--text);
+  background: #000;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  display: inline-block;
+}
+
+.btn:hover,
+.btn:focus-visible {
+  color: #000;
+  background: #fff;
+}
+
+/* 手順 */
+.quest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+}
+
+.quest-item h3 {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 17px;
+  font-weight: normal;
+}
+
+.quest-item ol {
+  margin: 0 0 8px 1.8em;
+}
+
+code,
+pre {
+  font: inherit;
+  color: var(--accent);
+}
+
+pre {
+  margin-top: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  border: 2px solid #666;
+  border-radius: 6px;
+}
+
+figure {
+  margin-top: 8px;
+}
+
+figcaption {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  image-rendering: auto;
+}
+
+/* ツールの一覧 */
+.tool-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.tool-list li {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr) 96px;
+  gap: 0 12px;
+}
+
+.tool-name {
+  color: var(--accent);
+}
+
+.tool-need {
+  text-align: right;
+}
+
+.tool-need.open {
+  color: var(--good);
+}
+
+.tool-need.member {
+  color: #ffb060;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+footer {
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+  text-shadow: 2px 2px 0 #000;
+}
+
+@media (max-width: 820px) {
+  .top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 20px 8px;
+  }
+
+  .win {
+    padding: 16px 12px 12px;
+  }
+
+  .tool-list li {
+    grid-template-columns: minmax(0, 1fr);
+    padding-bottom: 6px;
+  }
+
+  .tool-need {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cmd a::before,
+  .cmd button::before,
+  .cmd li > ::before,
+  .message::after {
+    animation: none !important;
+  }
+}

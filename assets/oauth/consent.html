@@ -3,81 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORO SERVER - AI INTEGRATION CONSENT</title>
-  <style>
-    body {
-      background: #000000;
-      color: #00ff00;
-      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      margin: 0;
-      padding: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    .term-box {
-      background: #080808;
-      border: 3px double #00ff00;
-      max-width: 500px;
-      width: 100%;
-      padding: 20px;
-      text-align: center;
-    }
-    .term-header {
-      background: #00ff00;
-      color: #000000;
-      font-weight: bold;
-      padding: 4px;
-      margin-bottom: 14px;
-      font-size: 13px;
-    }
-    .client-tag {
-      color: #00ffff;
-      font-weight: bold;
-      margin-bottom: 10px;
-      font-size: 14px;
-    }
-    .permissions {
-      text-align: left;
-      background: #001100;
-      border: 1px dashed #00aa00;
-      padding: 10px 14px;
-      margin: 14px 0;
-      font-size: 12px;
-      list-style-type: none;
-    }
-    .permissions li {
-      margin-bottom: 6px;
-    }
-  </style>
+  <title>AI クライアントとの連携の許可 - TORO サーバー</title>
+  <link rel="icon" href="/_assets/favicon.svg">
+  <link rel="stylesheet" href="/_assets/auth.css">
 </head>
 <body>
-  <div class="term-box">
-    <div class="term-header">*** TORO SERVER AI GATEWAY - AUTHORIZATION REQUEST ***</div>
-    <div class="client-tag">&gt;&gt; REQUESTING CLIENT: {{CLIENT_NAME}}</div>
-    <div style="color:#ffff00; font-size:13px; font-weight:bold; margin-bottom:6px; word-break:break-all;">&gt;&gt; TOKENS WILL BE SENT TO: {{REDIRECT_TARGET}}</div>
-    <div style="color:#ffff00; font-size:12px; margin-bottom:10px; word-break:break-all;">&gt;&gt; REQUESTED SCOPE: {{SCOPE}}</div>
-    <p style="color:#00ff00; font-size:12px; text-align:left;">
-      The AI Client is requesting access to the TORO Server Remote MCP endpoint.
-    </p>
+  <main class="screen screen-narrow">
+    <div class="win help">AI クライアントが、TORO サーバーとの連携の許可を求めています。</div>
 
-    <ul class="permissions">
-      <li>[+] Wiki documentation read and keyword query search</li>
-      {{WRITE_PERMISSION}}
-      <li>[+] Real-time Minecraft server status and telemetry queries</li>
-    </ul>
+    <section class="win">
+      <p>要求元: {{CLIENT_NAME}}</p>
+      <p class="warn">トークンの送り先: {{REDIRECT_TARGET}}</p>
+      <p class="muted">求める権限: {{SCOPE}}</p>
+    </section>
+
+    <section class="win">
+      <h2>できるようになること</h2>
+      <ul class="perm-list">
+        <li>+ Wiki の閲覧と検索</li>
+        {{WRITE_PERMISSION}}
+        <li>+ Minecraft サーバーの稼働状態の確認</li>
+      </ul>
+    </section>
 
     {{USER_SECTION}}
 
-    <div style="margin-top:16px; border-top:1px dashed #005500; padding-top:10px;">
-      <a href="https://mcp.torosaba.net/" target="_top" style="color:#008800; font-size:12px; text-decoration:none;">
-        [ ABORT TO MCP CONSOLE ]
-      </a>
-    </div>
-  </div>
+    <footer><a href="https://mcp.torosaba.net/" target="_top">AI 連携の案内へ戻る</a></footer>
+  </main>
 </body>
 </html>

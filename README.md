@@ -28,6 +28,17 @@ Cloudflare Workers の toro-auth の置き換えで、公開している URL と
 - URL を足す: 機能のモジュールにハンドラーを書き、`src/routes.rs` に 1 行足す
 - MCP のツールを足す: `assets/mcp/tools.json` に定義を、`src/mcp/tools/` に実行を書き、`tools/mod.rs` の `call` に 1 行足す
 
+## 画面
+
+| ホスト | 雰囲気 | スタイル |
+| --- | --- | --- |
+| mcp.torosaba.net | 草原の上に、黒地に白い角丸枠の窓とコマンド。文字が 1 字ずつ流れる窓 | `assets/mcp/theme.css` |
+| auth.torosaba.net | 青いグラデーションの窓と銀の枠、指のカーソル、ステータスの画面 | `assets/auth/theme.css` |
+
+16 ビット時代の RPG の画面の文法を、自作の CSS とドット絵だけで作っています。既存の作品の名前、用語、素材は使いません。
+
+フォントは DotGothic16 (SIL Open Font License 1.1) を `assets/fonts/` に同梱し、自前で配っています (`/_assets/pixel.woff2`、ライセンスは `/_assets/OFL.txt`)。
+
 ## 開発
 
 ```bash

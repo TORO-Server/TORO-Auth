@@ -3,421 +3,168 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TORO サーバー 外部 AI 連携システム - Remote MCP ゲートウェイ</title>
-  <link rel="icon" href="https://auth.torosaba.net/favicon.ico">
-  <style>
-    :root {
-      --c-black: #000000;
-      --c-white: #ffffff;
-      --c-cyan: #00ffff;
-      --c-yellow: #ffff00;
-      --c-green: #00ff00;
-      --c-red: #ff5555;
-      --c-blue-bg: #0000aa;
-      --c-cyan-bg: #008888;
-      --c-gray-dim: #777777;
-      --c-dark-blue: #000044;
-    }
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      background-color: var(--c-black);
-      color: var(--c-white);
-      font-family: 'MS Gothic', 'Yu Gothic', 'Hiragino Kaku Gothic ProN', monospace;
-      font-size: 14px;
-      line-height: 1.6;
-      letter-spacing: 0.03em;
-      padding: 10px;
-    }
-    @media (max-width: 640px) {
-      body {
-        padding: 6px;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-    }
-    .console-window {
-      max-width: 920px;
-      width: 100%;
-      margin: 0 auto;
-      border: 1px solid var(--c-white);
-      background-color: var(--c-black);
-      padding: 12px;
-    }
-    @media (max-width: 640px) {
-      .console-window {
-        padding: 8px;
-        border: 1px solid var(--c-white);
-      }
-    }
-    .title-bar-main {
-      background-color: var(--c-blue-bg);
-      color: var(--c-white);
-      padding: 6px 10px;
-      margin-bottom: 12px;
-      font-weight: bold;
-      font-size: 15px;
-      border: 1px solid var(--c-white);
-    }
-    .title-bar-sub {
-      font-size: 12px;
-      color: var(--c-cyan);
-      font-weight: normal;
-      margin-top: 4px;
-    }
-    .section-panel {
-      border: 1px solid var(--c-white);
-      margin-bottom: 16px;
-      background-color: var(--c-black);
-    }
-    .section-header {
-      background-color: var(--c-blue-bg);
-      color: var(--c-white);
-      padding: 5px 10px;
-      font-size: 13px;
-      font-weight: bold;
-      border-bottom: 1px solid var(--c-white);
-    }
-    .section-header-cyan {
-      background-color: var(--c-cyan-bg);
-      color: var(--c-white);
-      padding: 5px 10px;
-      font-size: 13px;
-      font-weight: bold;
-      border-bottom: 1px solid var(--c-white);
-    }
-    .section-body {
-      padding: 12px;
-    }
-    @media (max-width: 640px) {
-      .section-body {
-        padding: 8px;
-      }
-    }
-    .url-box {
-      border: 1px dashed var(--c-cyan);
-      padding: 10px;
-      margin: 10px 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 10px;
-      background-color: var(--c-dark-blue);
-    }
-    .url-text {
-      font-size: 15px;
-      font-weight: bold;
-      color: var(--c-cyan);
-      word-break: break-all;
-    }
-    .btn {
-      display: inline-block;
-      background-color: var(--c-blue-bg);
-      color: var(--c-white);
-      border: 1px solid var(--c-white);
-      padding: 6px 14px;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: bold;
-      text-decoration: none;
-      cursor: pointer;
-      text-align: center;
-    }
-    .btn:hover, .btn:active {
-      background-color: var(--c-white);
-      color: var(--c-black);
-    }
-    @media (max-width: 640px) {
-      .btn {
-        display: block;
-        width: 100%;
-        padding: 10px 14px;
-      }
-    }
-    .client-card {
-      border: 1px solid var(--c-gray-dim);
-      margin-bottom: 16px;
-      padding: 10px;
-      background-color: var(--c-black);
-    }
-    @media (max-width: 640px) {
-      .client-card {
-        padding: 8px;
-      }
-    }
-    .client-name {
-      font-size: 14px;
-      font-weight: bold;
-      color: var(--c-yellow);
-      border-bottom: 1px dashed var(--c-gray-dim);
-      padding-bottom: 4px;
-      margin-bottom: 8px;
-    }
-    .step-list {
-      margin: 8px 0 12px 20px;
-    }
-    .step-list li {
-      margin-bottom: 6px;
-      color: #eeeeee;
-    }
-    .step-list li strong {
-      color: var(--c-white);
-    }
-    .step-list li code {
-      color: var(--c-cyan);
-      background-color: #000044;
-      padding: 1px 4px;
-      border: 1px solid #333333;
-    }
-    .image-box {
-      margin-top: 10px;
-      border: 1px solid var(--c-white);
-      padding: 6px;
-      background-color: #000000;
-    }
-    .image-caption {
-      font-size: 12px;
-      color: var(--c-cyan);
-      margin-bottom: 6px;
-      font-weight: bold;
-    }
-    .screenshot-img {
-      width: 100%;
-      max-width: 100%;
-      height: auto;
-      display: block;
-      border: 1px solid #444444;
-    }
-    .table-responsive {
-      width: 100%;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      margin: 10px 0;
-    }
-    .data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      min-width: 580px;
-    }
-    .data-table th, .data-table td {
-      border: 1px solid var(--c-white);
-      padding: 6px 10px;
-      text-align: left;
-    }
-    .data-table th {
-      background-color: var(--c-blue-bg);
-      color: var(--c-white);
-      font-weight: bold;
-    }
-    .data-table tr:nth-child(even) {
-      background-color: #000022;
-    }
-    .fkey-container {
-      margin-top: 20px;
-      border-top: 1px solid var(--c-white);
-      padding-top: 10px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-      gap: 8px;
-    }
-    .fkey-btn {
-      background-color: var(--c-blue-bg);
-      border: 1px solid var(--c-white);
-      color: var(--c-white);
-      text-decoration: none;
-      padding: 6px 8px;
-      text-align: center;
-      font-size: 12px;
-      font-weight: bold;
-      display: block;
-    }
-    .fkey-btn:hover {
-      background-color: var(--c-white);
-      color: var(--c-black);
-    }
-    .fkey-prefix {
-      color: var(--c-yellow);
-      margin-right: 4px;
-    }
-    .text-cyan { color: var(--c-cyan); }
-    .text-green { color: var(--c-green); }
-    .text-yellow { color: var(--c-yellow); }
-    .text-red { color: var(--c-red); }
-    .text-white { color: var(--c-white); }
-    .footer-text {
-      text-align: center;
-      margin-top: 14px;
-      font-size: 11px;
-      color: #888888;
-    }
-  </style>
+  <title>TORO サーバー 外部 AI 連携システム</title>
+  <link rel="icon" href="/_assets/favicon.svg">
+  <link rel="stylesheet" href="/_assets/mcp.css">
 </head>
 <body>
-  <div class="console-window">
-    <!-- タイトルバー -->
-    <header class="title-bar-main">
-      <div>*** TORO サーバー 外部 AI 連携システム ***</div>
-      <div class="title-bar-sub">接続先: mcp.torosaba.net | 状態: 正常稼働中 | プロトコル: HTTP / SSE 対応</div>
-    </header>
+  <main class="screen">
+    <div class="top">
+      <header class="win title">
+        <h1>TORO サーバー<br>外部 AI 連携<br>システム</h1>
+        <svg class="scene" viewBox="0 0 64 28" shape-rendering="crispEdges" aria-hidden="true">
+          <rect width="64" height="28" fill="#2040c0"/>
+          <rect y="16" width="64" height="12" fill="#2a8c38"/>
+          <path fill="#ffffff" d="M6 5h8v1h2v2H4V6h2zM44 3h6v1h2v2H42V4h2z"/>
+          <path fill="#3c6e8c" d="M0 16h4v-3h4v-3h4v3h4v3h28v-4h4v-4h4v4h4v4h8v1H0z"/>
+          <path fill="#c8c8d0" d="M26 8h2v2h2V8h4v2h2V8h2v10H26z"/>
+          <path fill="#8888a0" d="M30 14h4v4h-4zM28 11h2v2h-2zM34 11h2v2h-2z"/>
+          <path fill="#e03030" d="M31 3h1v5h-1zM32 3h4v2h-4z"/>
+          <path fill="#c8a860" d="M31 18h2v10h-2z"/>
+          <path fill="#1f7a2e" d="M8 21h1v2H8zM18 24h1v2h-1zM46 22h1v2h-1zM56 25h1v2h-1z"/>
+        </svg>
+        <p>mcp.torosaba.net</p>
+      </header>
 
-    <!-- 認証状態ブロック -->
-    {{USER_BLOCK}}
+      <nav class="win" aria-label="コマンド">
+        <h2 class="win-title">コマンド</h2>
+        <ul class="cmd">
+          <li><a href="#url">接続先を見る</a></li>
+          <li><a href="#steps">つなぎ方を聞く</a></li>
+          <li><a href="#tools">ツールを調べる</a></li>
+          <li><a href="https://wiki.torosaba.net/">Wiki へ行く</a></li>
+          <li><a href="https://auth.torosaba.net/">認証の窓口へ行く</a></li>
+        </ul>
+      </nav>
 
-    <!-- 共通接続先 URL パネル -->
-    <div class="section-panel">
-      <div class="section-header">【 共通 MCP サーバー接続先 URL 】</div>
-      <div class="section-body">
-        <p>AI クライアントの接続設定に以下の URL を登録してください。OAuth 2.0 認証情報が自動検出されます。</p>
-        <div class="url-box">
-          <div class="url-text" id="endpoint-url">https://mcp.torosaba.net/</div>
-          <button class="btn" onclick="navigator.clipboard.writeText('https://mcp.torosaba.net/').then(() => alert('接続先 URL をクリップボードにコピーしました。'))">
-            [ URL をコピー ]
-          </button>
-        </div>
-      </div>
+      <aside class="win" aria-label="サーバーの状態">
+        <h2 class="win-title">TORO</h2>
+        <dl class="stats">
+          <dt>状態</dt><dd style="color:var(--good);">正常</dd>
+          <dt>ツール</dt><dd>7</dd>
+          <dt>通信</dt><dd>HTTP / SSE</dd>
+          <dt>認証</dt><dd>OAuth 2.0</dd>
+        </dl>
+      </aside>
     </div>
 
-    <!-- 各社 AI 接続設定手順 -->
-    <div class="section-panel">
-      <div class="section-header-cyan">【 各社 AI クライアント 接続設定手順（実機画面） 】</div>
-      <div class="section-body">
+    <div class="win message" id="message" aria-live="polite">ようこそ、旅の人よ。ここは TORO サーバーと AI をつなぐ窓口だ。下の接続先を AI クライアントに登録すれば、Wiki を読み、サーバーの様子を知ることができるぞ。</div>
 
-        <!-- 1. Claude.ai -->
-        <section class="client-card">
-          <div class="client-name">&gt;&gt; [1] Claude.ai (Anthropic) の接続設定手順</div>
-          <ol class="step-list">
-            <li>Claude.ai の <strong>[設定] -&gt; [コネクタ]</strong>（または <strong>[カスタムコネクタを追加]</strong>）を開きます。</li>
-            <li>コネクタ名に「<code>TORO Server AI Gateway</code>」と入力します。</li>
-            <li>サーバー URL に「<code>https://mcp.torosaba.net/</code>」を入力し、<strong>[追加]</strong> を実行します。</li>
-            <li>画面に表示される Discord 認証ウィンドウで認可を承認すると、全 7 種類のツールが有効になります。</li>
+    {{USER_BLOCK}}
+
+    <section class="win" id="url">
+      <h2 class="win-title">接続先</h2>
+      <p>AI クライアントの接続設定に、次の URL を登録してください。OAuth の設定は自動で見つかります。</p>
+      <div class="url-box">
+        <span class="url-text">https://mcp.torosaba.net/</span>
+        <button class="btn" type="button" id="copy-url">URL を写す</button>
+      </div>
+    </section>
+
+    <section class="win" id="steps">
+      <h2 class="win-title">つなぎ方</h2>
+      <div class="quest">
+        <article class="quest-item">
+          <h3>その 1　Claude.ai</h3>
+          <ol>
+            <li>[設定] → [コネクタ] (または [カスタムコネクタを追加]) を開きます。</li>
+            <li>コネクタ名に <code>TORO Server AI Gateway</code> と入力します。</li>
+            <li>サーバー URL に <code>https://mcp.torosaba.net/</code> を入力し、[追加] を押します。</li>
+            <li>Discord の認証の画面で承認すると、7 種類のツールが使えるようになります。</li>
           </ol>
-          <div class="image-box">
-            <div class="image-caption">【 実機画面 1: コネクタ認可および全 7 ツールの有効化確認 】</div>
-            <img class="screenshot-img" src="/_assets/claude_settings.webp" alt="Claude コネクタ設定・認可画面" />
-          </div>
-        </section>
+          <figure>
+            <img src="/_assets/claude_settings.webp" alt="Claude のコネクタの設定と認可の画面" loading="lazy">
+            <figcaption>実際の画面: コネクタの認可と、7 つのツールの確認</figcaption>
+          </figure>
+        </article>
 
-        <!-- 2. ChatGPT -->
-        <section class="client-card">
-          <div class="client-name">&gt;&gt; [2] ChatGPT (OpenAI) のプラグイン・MCP 登録手順</div>
-          <ol class="step-list">
-            <li>ChatGPT の <strong>[設定] -&gt; [プラグイン] -&gt; [カスタム MCP サーバーを追加]</strong> を開きます。</li>
-            <li>名前に「<code>TORO Server</code>」、接続形式に「<strong>サーバー URL</strong>」を選択します。</li>
-            <li>サーバー URL に「<code>https://mcp.torosaba.net/</code>」を入力します（OAuth 認証は自動判別されます）。</li>
-            <li>同意チェックボックスをオンにし、<strong>[プラグインとして作成]</strong> を実行します。</li>
+        <article class="quest-item">
+          <h3>その 2　ChatGPT</h3>
+          <ol>
+            <li>[設定] → [プラグイン] → [カスタム MCP サーバーを追加] を開きます。</li>
+            <li>名前に <code>TORO Server</code>、接続形式に [サーバー URL] を選びます。</li>
+            <li>サーバー URL に <code>https://mcp.torosaba.net/</code> を入力します (OAuth は自動で判別されます)。</li>
+            <li>同意のチェックを入れて、[プラグインとして作成] を押します。</li>
           </ol>
-          <div class="image-box">
-            <div class="image-caption">【 実機画面 2: プラグイン登録および基本連携完了確認 】</div>
-            <img class="screenshot-img" src="/_assets/chatgpt_settings.webp" alt="ChatGPT プラグイン登録画面" />
-          </div>
-        </section>
+          <figure>
+            <img src="/_assets/chatgpt_settings.webp" alt="ChatGPT のプラグイン登録の画面" loading="lazy">
+            <figcaption>実際の画面: プラグインの登録と連携の完了</figcaption>
+          </figure>
+        </article>
 
-        <!-- 3. Google Gemini -->
-        <section class="client-card">
-          <div class="client-name">&gt;&gt; [3] Google Gemini のカスタムアプリ連携手順</div>
-          <ol class="step-list">
-            <li>Google Gemini の <strong>[連携アプリ] -&gt; [カスタムアプリを作成]</strong> を開きます。</li>
-            <li>接続先 URL に「<code>https://mcp.torosaba.net/</code>」を入力し、認可画面へ進みます。</li>
-            <li>同意画面で認証を完了すると、7 種類のアクションがすべて自動同期されます。</li>
-            <li>チャット内で「<code>@Toro Server Ai Gateway</code>」を呼び出して各機能を利用します。</li>
+        <article class="quest-item">
+          <h3>その 3　Google Gemini</h3>
+          <ol>
+            <li>[連携アプリ] → [カスタムアプリを作成] を開きます。</li>
+            <li>接続先の URL に <code>https://mcp.torosaba.net/</code> を入力し、認可の画面へ進みます。</li>
+            <li>同意の画面で認証を終えると、7 種類のアクションが同期されます。</li>
+            <li>チャットの中で <code>@Toro Server Ai Gateway</code> を呼び出して使います。</li>
           </ol>
-          <div class="image-box">
-            <div class="image-caption">【 実機画面 3: カスタムアプリ詳細および全 7 アクション同期確認 】</div>
-            <img class="screenshot-img" src="/_assets/gemini_settings.webp" alt="Google Gemini カスタムアプリ詳細画面" />
-          </div>
-        </section>
+          <figure>
+            <img src="/_assets/gemini_settings.webp" alt="Google Gemini のカスタムアプリの詳細画面" loading="lazy">
+            <figcaption>実際の画面: カスタムアプリの詳細と、7 つのアクションの同期</figcaption>
+          </figure>
+        </article>
 
-        <!-- 4. ローカル環境 -->
-        <section class="client-card">
-          <div class="client-name">&gt;&gt; [4] ローカル環境 (Claude Desktop / Cursor 等) の接続設定</div>
-          <p>お使いの設定ファイル（<code>claude_desktop_config.json</code> 等）に以下の定義を追加してください。</p>
-          <div style="background-color: #000022; border: 1px solid var(--c-white); padding: 10px; margin-top: 8px; overflow-x: auto;">
-            <pre class="text-cyan">{
+        <article class="quest-item">
+          <h3>その 4　手元のアプリ (Claude Desktop / Cursor など)</h3>
+          <p>設定ファイル (<code>claude_desktop_config.json</code> など) に次の定義を足します。</p>
+          <pre>{
   "mcpServers": {
     "toro-server": {
       "url": "https://mcp.torosaba.net/"
     }
   }
 }</pre>
-          </div>
-        </section>
-
+        </article>
       </div>
-    </div>
+    </section>
 
-    <!-- 提供ツール一覧 -->
-    <div class="section-panel">
-      <div class="section-header">【 提供ツール一覧（TORO サーバー共通機能） 】</div>
-      <div class="section-body">
-        <p>本 MCP サーバーは Wiki だけでなく、Minecraft サーバーや Discord など TORO サーバーの各種サービス全般で利用可能です。</p>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ツール識別子</th>
-                <th>機能概要</th>
-                <th>必要権限</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="text-cyan">wiki_list_pages</td>
-                <td>TORO Server Wiki ドキュメント全件の一覧を取得します。</td>
-                <td class="text-green">不要（公開）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">wiki_get_page</td>
-                <td>指定した Wiki ページの Markdown 原稿および Git SHA を取得します。</td>
-                <td class="text-green">不要（公開）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">wiki_search</td>
-                <td>全 Wiki ドキュメントを対象にキーワード全文検索を行います。</td>
-                <td class="text-green">不要（公開）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">wiki_save_page</td>
-                <td>編集した原稿を GitHub リポジトリ（main ブランチ）へ直接コミット保存します。</td>
-                <td class="text-yellow">要認証（メンバー権限）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">server_get_status</td>
-                <td>Minecraft サーバーのリアルタイム稼働状態（接続人数、MOTD、バージョン等）を取得します。</td>
-                <td class="text-green">不要（公開）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">server_get_info</td>
-                <td>公式 Web サイト、Wiki、2D/3D マップ、Discord 等の各種サービス案内を取得します。</td>
-                <td class="text-green">不要（公開）</td>
-              </tr>
-              <tr>
-                <td class="text-cyan">auth_get_identity</td>
-                <td>呼び出し元 Discord ユーザーの身元情報、所属ロール、編集権限状態を確認します。</td>
-                <td class="text-white">任意（ログイン時）</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    <section class="win" id="tools">
+      <h2 class="win-title">ツール</h2>
+      <ul class="tool-list">
+        <li><span class="tool-name">wiki_list_pages</span><span>Wiki の原稿の一覧を見る</span><span class="tool-need open">だれでも</span></li>
+        <li><span class="tool-name">wiki_get_page</span><span>Wiki の原稿と Git SHA を読む</span><span class="tool-need open">だれでも</span></li>
+        <li><span class="tool-name">wiki_search</span><span>Wiki の全文を語句で探す</span><span class="tool-need open">だれでも</span></li>
+        <li><span class="tool-name">wiki_save_page</span><span>Wiki の原稿を保存し、GitHub にコミットする</span><span class="tool-need member">メンバー</span></li>
+        <li><span class="tool-name">server_get_status</span><span>Minecraft サーバーの接続人数や状態を見る</span><span class="tool-need open">だれでも</span></li>
+        <li><span class="tool-name">server_get_info</span><span>TORO サーバーの各サービスの案内を見る</span><span class="tool-need open">だれでも</span></li>
+        <li><span class="tool-name">auth_get_identity</span><span>呼び出し元の身元と編集の権限を確かめる</span><span class="tool-need">ログイン時</span></li>
+      </ul>
+    </section>
 
-    <!-- ファンクションキーバー -->
-    <nav class="fkey-container">
-      <a href="https://wiki.torosaba.net/" class="fkey-btn"><span class="fkey-prefix">[f・1]</span>Wiki</a>
-      <a href="https://mcp.torosaba.net/mcp" class="fkey-btn"><span class="fkey-prefix">[f・2]</span>MCP仕様</a>
-      <a href="https://auth.torosaba.net/" class="fkey-btn"><span class="fkey-prefix">[f・3]</span>認証管理</a>
-      <a href="https://auth.torosaba.net/api/auth/login" class="fkey-btn"><span class="fkey-prefix">[f・4]</span>ログイン</a>
-      <a href="#endpoint-url" class="fkey-btn"><span class="fkey-prefix">[f・5]</span>先頭へ</a>
-    </nav>
+    <footer>TORO SERVER (C) 2026</footer>
+  </main>
 
-    <div class="footer-text">
-      TORO SERVER (C) 2026. ALL RIGHTS RESERVED. -- REMOTE MCP INTERFACE GATEWAY
-    </div>
-  </div>
+  <script>
+    const box = document.getElementById('message');
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let timer;
+    function say(text) {
+      clearInterval(timer);
+      if (still) {
+        box.textContent = text;
+        return;
+      }
+      const letters = Array.from(text);
+      let shown = 0;
+      box.textContent = '';
+      timer = setInterval(() => {
+        shown += 1;
+        box.textContent = letters.slice(0, shown).join('');
+        if (shown >= letters.length) clearInterval(timer);
+      }, 28);
+    }
+    say(box.textContent);
+
+    document.getElementById('copy-url').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText('https://mcp.torosaba.net/');
+        say('接続先の URL を写し取った。AI クライアントの設定に貼り付けるがよい。');
+      } catch {
+        say('写し取れなかった。お手数だが、URL を選んでコピーしてほしい。');
+      }
+    });
+  </script>
 </body>
 </html>

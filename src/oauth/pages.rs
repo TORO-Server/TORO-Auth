@@ -14,20 +14,22 @@ pub struct Consent<'a> {
     pub deny_url: &'a str,
 }
 
-const WRITE_PERMISSION: &str =
-    "<li>[+] Wiki page editing and direct commit to repository (Member role required)</li>";
-const NO_WRITE_PERMISSION: &str = "<li>[-] Wiki page editing is not requested (read only)</li>";
+const WRITE_PERMISSION: &str = "<li>+ Wiki の編集と保存 (GitHub へのコミット。メンバーのみ)</li>";
+const NO_WRITE_PERMISSION: &str = "<li>- Wiki の編集は求めていません (読むだけ)</li>";
 
 pub fn consent(options: &Consent) -> String {
     let write_requested = scope_allows_write(options.scope);
     let section = match (options.session, options.approve_url) {
         (Some(session), Some(approve_url)) => {
             let (color, label) = if !session.can_edit() {
-                ("#ffff00", "[GUEST] (READ ONLY)")
+                ("#ffe070", "ゲスト (読むだけ)")
             } else if write_requested {
-                ("#00ff00", "[TORO MEMBER] (WIKI WRITE ENABLED)")
+                ("#7cf0b0", "TORO メンバー (Wiki の編集ができます)")
             } else {
-                ("#00ff00", "[TORO MEMBER] (READ ONLY FOR THIS CLIENT)")
+                (
+                    "#7cf0b0",
+                    "TORO メンバー (このクライアントには読むだけを許可)",
+                )
             };
             render(
                 include_str!("../../assets/oauth/consent_session.html"),

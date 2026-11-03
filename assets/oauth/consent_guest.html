@@ -1,11 +1,9 @@
-<p style="color:#ffff00; font-size:12px; margin:14px 0; text-align:left;">
-        &gt; Discord authentication required to grant client access tokens.
-      </p>
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <a href="{{LOGIN_URL}}" target="_top" style="display:block; width:100%; padding:10px; background:#003322; color:#00ffff; font-weight:bold; text-decoration:none; text-align:center; border:1px solid #00ffff; box-sizing:border-box;">
-          &gt;&gt; LOGIN VIA DISCORD
-        </a>
-        <a href="{{DENY_URL}}" target="_top" style="display:block; width:100%; padding:8px; background:#220000; color:#ff5555; font-weight:bold; text-decoration:none; text-align:center; border:1px solid #ff3333; box-sizing:border-box;">
-          [ CANCEL AUTHORIZATION ]
-        </a>
-      </div>
+<section class="win">
+      <p class="warn">許可するには、Discord でのログインが必要です。</p>
+    </section>
+    <nav class="win" aria-label="次の操作">
+      <ul class="cmd">
+        <li><a href="{{LOGIN_URL}}" target="_top">Discord でログイン</a></li>
+        <li><a href="{{DENY_URL}}" target="_top" class="danger">やめる</a></li>
+      </ul>
+    </nav>

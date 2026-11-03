@@ -76,7 +76,7 @@ fn known_client(redirect_uri: &str) -> Option<&'static str> {
 }
 
 pub fn display_name(client_id: &str, redirect_uri: &str) -> String {
-    known_client(redirect_uri).map_or_else(|| format!("UNVERIFIED: {client_id}"), str::to_string)
+    known_client(redirect_uri).map_or_else(|| format!("未確認: {client_id}"), str::to_string)
 }
 
 /// PKCE (S256) を省略してよいか。Google Account Linking だけは使わないので、戻り先が本物のときに限り許す
@@ -126,12 +126,9 @@ mod tests {
             "https://evil.googleusercontent.com/google",
             "http://claude.ai/cb",
         ] {
-            assert!(
-                display_name("x", spoof).starts_with("UNVERIFIED"),
-                "{spoof}"
-            );
+            assert!(display_name("x", spoof).starts_with("未確認"), "{spoof}");
         }
-        assert!(display_name("claude", "https://a.example/").starts_with("UNVERIFIED"));
+        assert!(display_name("claude", "https://a.example/").starts_with("未確認"));
     }
 
     #[test]
