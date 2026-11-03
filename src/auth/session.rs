@@ -4,7 +4,7 @@
 //! 他のサブドメインのサーバーには渡らず、他のサブドメインから差し替えることもできない。
 //!
 //! どこから取り出すかは、用途で使い分ける:
-//! - `from_bearer`: MCP など API のクライアント
+//! - `from_bearer`: Bearer を付けて auth を呼ぶクライアント (api / mcp は `internal` で確かめる)
 //! - `from_cookie`: ブラウザでの読み取りと、同意の画面
 //! - `from_cookie_for_write`: ブラウザでの変更 (Origin を確かめる。CSRF 対策)
 //! - `from_request`: 自分の情報の確認のように、どちらも受け付けるもの
@@ -128,7 +128,8 @@ fn is_current_connector_token(app: &App, claims: &Claims) -> bool {
     }
 }
 
-fn session_from_token(app: &App, token: &str) -> Option<Session> {
+/// 通るトークンの持ち主。api / mcp からの確認 (`internal`) もここを通る
+pub fn from_token(app: &App, token: &str) -> Option<Session> {
     let claims = decode_access_token(app, token)?;
     claims.get("id").and_then(Value::as_str)?;
     Some(Session { claims })
@@ -141,13 +142,13 @@ pub fn bearer_token(ctx: &Ctx) -> Option<&str> {
 }
 
 pub fn from_bearer(app: &App, ctx: &Ctx) -> Option<Session> {
-    bearer_token(ctx).and_then(|token| session_from_token(app, token))
+    bearer_token(ctx).and_then(|token| from_token(app, token))
 }
 
 /// ブラウザのセッション。API 用のトークンを Cookie に入れても通さない
 pub fn from_cookie(app: &App, ctx: &Ctx) -> Option<Session> {
     let token = cookie(ctx.header(header::COOKIE), SESSION_COOKIE)?;
-    let session = session_from_token(app, &token)?;
+    let session = from_token(app, &token)?;
     let is_browser_session =
         !session.claims.contains_key("type") && !session.claims.contains_key("purpose");
     is_browser_session.then_some(session)

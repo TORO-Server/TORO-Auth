@@ -96,15 +96,6 @@ async fn metadata_is_served() {
         .await
         .unwrap();
     assert_eq!(openid, meta);
-
-    let resource: Value = server
-        .mcp_get("/.well-known/oauth-protected-resource")
-        .await
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(resource["resource"], "https://mcp.torosaba.net");
-    assert_eq!(resource["authorization_servers"], json!([server.base]));
 }
 
 #[tokio::test]
@@ -196,10 +187,8 @@ async fn full_flow_from_guest_to_refresh() {
         .unwrap();
     assert_eq!(info["sub"], "1001");
     assert_eq!(info["email"], "1001@discord.torosaba.net");
-    let (text, _) = server
-        .tool("auth_get_identity", json!({}), Some(access))
-        .await;
-    assert!(text.contains("member_user"));
+    let claims = server.introspect(access).await.unwrap();
+    assert_eq!(claims["username"], "member_user");
 
     // リフレッシュ
     let res = token_request(
@@ -210,14 +199,11 @@ async fn full_flow_from_guest_to_refresh() {
     assert_eq!(res.status(), 200);
     let renewed: Value = res.json().await.unwrap();
     assert_eq!(renewed["refresh_token"], refresh);
-    let (text, _) = server
-        .tool(
-            "auth_get_identity",
-            json!({}),
-            renewed["access_token"].as_str(),
-        )
-        .await;
-    assert!(text.contains("member_user"));
+    let claims = server
+        .introspect(renewed["access_token"].as_str().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(claims["username"], "member_user");
 }
 
 #[tokio::test]
