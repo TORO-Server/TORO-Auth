@@ -1,4 +1,4 @@
-//! URL から各機能への振り分け
+//! URL から各機能への振り分け。auth は 1 つの役割だけを受け持つので、ホストでは分けない
 
 use std::sync::Arc;
 
@@ -12,8 +12,7 @@ use serde_json::json;
 
 use crate::config::Config;
 use crate::http::{self, Ctx};
-use crate::site::Role;
-use crate::{App, api, auth, home, mcp, oauth, openapi, static_files, wiki};
+use crate::{App, auth, home, oauth, static_files};
 
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
@@ -67,7 +66,6 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
 
     let path = ctx.path.as_str();
 
-    // 稼働確認と、画面の素材はどのホストでも同じ
     if path == "/healthz" {
         return Ok(http::json(ctx, &json!({ "ok": true }), 200));
     }
@@ -75,11 +73,7 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
         return Ok(res);
     }
 
-    match app.cfg.role_of(&ctx.host) {
-        Role::Auth => route_auth(app, ctx).await,
-        Role::Api => Ok(route_api(app, ctx).await),
-        Role::Mcp => Ok(route_mcp(app, ctx).await),
-    }
+    route_auth(app, ctx).await
 }
 
 fn not_found(ctx: &Ctx) -> Response {
@@ -129,34 +123,4 @@ fn moved_from_auth(cfg: &Config, path: &str) -> Option<String> {
         }
         _ => None,
     }
-}
-
-/// api: データを読み書きする
-async fn route_api(app: &App, ctx: &Ctx) -> Response {
-    match ctx.path.as_str() {
-        "/" => api::index(app, ctx),
-        "/me" => api::me(app, ctx),
-        "/docs/raw" => wiki::api::raw(app, ctx).await,
-        "/docs/save" => wiki::api::save(app, ctx).await,
-        "/openapi.json" => openapi::handle(app, ctx),
-        _ => not_found(ctx),
-    }
-}
-
-/// mcp: AI クライアントがつなぐ。認可の窓口は auth へ案内する
-async fn route_mcp(app: &App, ctx: &Ctx) -> Response {
-    let path = ctx.path.as_str();
-    // RFC 9728: 接続先に /mcp を登録したクライアントは、パスを付けて聞いてくる
-    if path == "/.well-known/oauth-protected-resource"
-        || path.starts_with("/.well-known/oauth-protected-resource/")
-    {
-        return oauth::metadata::protected_resource(app, ctx);
-    }
-    if path.starts_with("/oauth/")
-        || path == "/.well-known/oauth-authorization-server"
-        || path == "/.well-known/openid-configuration"
-    {
-        return http::moved(ctx, &format!("{}{path}", app.cfg.issuer));
-    }
-    mcp::transport::handle(app, ctx).await
 }

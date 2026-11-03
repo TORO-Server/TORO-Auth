@@ -1,4 +1,4 @@
-//! auth / api / mcp の役割の分離と、URL の正本
+//! auth の役割の範囲、以前の URL の転送、api / mcp からのトークンの確認、URL の正本
 
 mod common;
 
@@ -8,50 +8,23 @@ use serde_json::{Value, json};
 use toro_auth::jwt;
 
 #[tokio::test]
-async fn api_root_lists_every_service_from_the_config() {
-    let server = start().await;
-    let body: Value = server.api_get("/").await.json().await.unwrap();
-    assert_eq!(body["services"]["auth"], server.base);
-    assert_eq!(body["services"]["api"], "https://api.torosaba.net");
-    assert_eq!(body["services"]["mcp"], "https://mcp.torosaba.net");
-    assert_eq!(body["openapi"], "https://api.torosaba.net/openapi.json");
-    assert!(
-        body["documentation"]
-            .as_str()
-            .unwrap()
-            .starts_with("https://wiki.torosaba.net/wiki/")
-    );
-}
-
-#[tokio::test]
-async fn each_host_only_answers_for_its_own_role() {
+async fn auth_does_not_serve_api_or_mcp() {
     let server = start().await;
 
-    // auth に API と MCP はない
-    assert_eq!(server.get("/docs/raw?path=a").await.status(), 404);
-    assert_eq!(server.get("/me").await.status(), 404);
-
-    // api に認証と MCP はない
-    for path in [
-        "/api/auth/me",
-        "/api/auth/login",
-        "/oauth/token",
-        "/mcp",
-        "/sse",
-    ] {
-        assert_eq!(server.api_get(path).await.status(), 404, "{path}");
+    for path in ["/docs/raw?path=a", "/docs/list", "/me", "/docs/save"] {
+        assert_eq!(server.get(path).await.status(), 404, "{path}");
     }
-
-    // mcp は画面を持たず、ブラウザはつなぎ方の記事へ送る
-    let res = server
-        .mcp_client
-        .get(server.url("/"))
-        .header(header::ACCEPT, "text/html")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 302);
-    assert!(location(&res).starts_with("https://wiki.torosaba.net/wiki/AI"));
+    // どのホストで来ても、答えるのは auth の役割だけ
+    for host in ["api.torosaba.net", "mcp.torosaba.net"] {
+        let res = server
+            .client
+            .get(server.url("/me"))
+            .header(header::HOST, host)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 404, "{host}");
+    }
 }
 
 #[tokio::test]
@@ -94,41 +67,13 @@ async fn old_urls_on_auth_move_to_the_right_host() {
 }
 
 #[tokio::test]
-async fn authorization_endpoints_on_mcp_move_to_auth() {
-    let server = start().await;
-    for path in [
-        "/.well-known/oauth-authorization-server",
-        "/.well-known/openid-configuration",
-        "/oauth/register",
-        "/oauth/authorize?client_id=x",
-        "/oauth/token",
-    ] {
-        let res = server.mcp_get(path).await;
-        assert_eq!(res.status(), 308, "{path}");
-        assert_eq!(location(&res), format!("{}{path}", server.base));
-    }
-}
-
-#[tokio::test]
-async fn api_ignores_cookies_and_uses_short_tokens_from_auth() {
+async fn session_tokens_are_short_and_checked_by_introspection() {
     let server = start().await;
     let cookie = server.login("member").await;
-    let body = json!({ "path": "a", "content": "x" });
 
-    // Cookie では保存できない (届いたとしても見ない)
-    let res = server
-        .api_client
-        .post(server.url("/docs/save"))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
-        .json(&body)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 401);
-    assert!(server.github.commits.lock().unwrap().is_empty());
+    // Cookie は auth のもの。確認の窓口にはトークンそのものを渡す
+    assert!(server.introspect(&cookie).await.is_none());
 
-    // Wiki の画面から短いトークンをもらって保存する
     let res = server
         .client
         .post(server.url("/api/auth/session-token"))
@@ -145,29 +90,10 @@ async fn api_ignores_cookies_and_uses_short_tokens_from_auth() {
     let claims = jwt::verify(token, JWT_SECRET).unwrap();
     assert!(claims["exp"].as_i64().unwrap() <= jwt::now() + 600);
 
-    let res = server
-        .api_client
-        .post(server.url("/docs/save"))
-        .bearer_auth(token)
-        .header(header::ORIGIN, WIKI_ORIGIN)
-        .json(&body)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 200);
-    assert_eq!(server.github.commits.lock().unwrap().len(), 1);
-
-    let me: Value = server
-        .api_client
-        .get(server.url("/me"))
-        .bearer_auth(token)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(me["user"]["username"], "member_user");
+    let claims = server.introspect(token).await.unwrap();
+    assert_eq!(claims["id"], "1001");
+    assert_eq!(claims["username"], "member_user");
+    assert_eq!(claims["can_edit"], true);
 }
 
 #[tokio::test]
@@ -207,17 +133,68 @@ async fn session_tokens_need_the_cookie_a_trusted_origin_and_post() {
 }
 
 #[tokio::test]
-async fn openapi_describes_the_api_host_only() {
+async fn introspection_only_answers_on_the_internal_port() {
     let server = start().await;
-    let spec: Value = server.api_get("/openapi.json").await.json().await.unwrap();
-    assert_eq!(spec["servers"][0]["url"], "https://api.torosaba.net");
+    let internal = |path: &str| format!("{}{path}", server.internal);
+
+    // 公開のポートには、確認の窓口がない
+    let res = server
+        .client
+        .post(server.url("/introspect"))
+        .json(&json!({ "token": "x" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+
+    // 内側のポートは、確認の窓口と稼働確認だけ
+    let res = server
+        .client
+        .get(internal("/healthz"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    for path in ["/", "/api/auth/me", "/oauth/token"] {
+        let res = server.client.get(internal(path)).send().await.unwrap();
+        assert_eq!(res.status(), 404, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn introspection_validates_its_input() {
+    let server = start().await;
+    let url = format!("{}/introspect", server.internal);
+
+    let res = server.client.get(&url).send().await.unwrap();
+    assert_eq!(res.status(), 405);
+
+    for body in ["{broken", "{}", r#"{"token":1}"#] {
+        let res = server.client.post(&url).body(body).send().await.unwrap();
+        assert_eq!(res.status(), 400, "{body}");
+    }
+
+    let res = server
+        .client
+        .post(&url)
+        .body(vec![b'x'; 17 * 1024])
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 413);
+
+    let res = server
+        .client
+        .post(&url)
+        .json(&json!({ "token": "garbage" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
     assert_eq!(
-        spec["paths"]["/docs/save"]["post"]["operationId"],
-        "saveWikiDoc"
+        res.json::<Value>().await.unwrap(),
+        json!({ "active": false })
     );
-    assert!(spec["paths"]["/docs/raw"]["get"].is_object());
-    assert!(spec["paths"]["/me"]["get"].is_object());
-    assert_eq!(spec["paths"].as_object().unwrap().len(), 3);
 }
 
 #[tokio::test]
@@ -236,37 +213,15 @@ async fn pages_take_their_urls_from_the_config() {
     );
     assert!(!home.contains("{{"));
 
-    let guide = server
-        .client
-        .get(server.url("/"))
-        .header(header::HOST, "mcp.example.test")
-        .header(header::ACCEPT, "text/html")
-        .send()
-        .await
-        .unwrap();
-    assert!(location(&guide).starts_with("https://wiki.example.test/wiki/"));
-    assert!(location(&guide).ends_with('/'));
-
     let invalid = server.get("/oauth/authorize").await.text().await.unwrap();
     assert!(invalid.contains("https://wiki.example.test/wiki/"));
     assert!(!invalid.contains("{{"));
 
-    let body: Value = server
-        .client
-        .post(server.url("/mcp"))
-        .header(header::HOST, "mcp.example.test")
-        .json(&json!({
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": { "name": "server_get_info", "arguments": {} },
-        }))
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-    let text = body["result"]["content"][0]["text"].as_str().unwrap();
-    assert!(text.contains("https://api.example.test/"));
+    // 以前の URL の転送先も、設定から作る
+    let res = server.get("/mcp").await;
+    assert_eq!(location(&res), "https://mcp.example.test/mcp");
+    let res = server.get("/api/docs/raw").await;
+    assert_eq!(location(&res), "https://api.example.test/docs/raw");
 }
 
 #[tokio::test]
@@ -286,4 +241,28 @@ async fn token_script_is_served_without_types() {
     assert!(script.contains("/api/auth/token"));
     assert!(!script.contains("TokenResponse"));
     assert!(!script.contains("HTMLButtonElement"));
+}
+
+#[tokio::test]
+async fn static_files_are_served_with_the_right_types() {
+    let server = start().await;
+    for (path, content_type) in [
+        ("/_assets/auth.css", "text/css; charset=utf-8"),
+        ("/_assets/token.js", "text/javascript; charset=utf-8"),
+        ("/_assets/pixel.woff2", "font/woff2"),
+        ("/_assets/favicon.svg", "image/svg+xml"),
+        ("/_assets/OFL.txt", "text/plain; charset=utf-8"),
+        ("/icon-64.png", "image/png"),
+    ] {
+        let res = server.get(path).await;
+        assert_eq!(res.status(), 200, "{path}");
+        assert_eq!(res.headers()[header::CONTENT_TYPE], content_type, "{path}");
+        assert!(
+            res.headers()[header::CACHE_CONTROL]
+                .to_str()
+                .unwrap()
+                .starts_with("public")
+        );
+        assert!(!res.bytes().await.unwrap().is_empty());
+    }
 }

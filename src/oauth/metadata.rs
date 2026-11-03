@@ -1,24 +1,10 @@
-//! 発見用のメタデータ
+//! 発見用のメタデータ。保護されたリソース (RFC 9728) の側は、リソースの持ち主である mcp が答える
 
 use axum::response::Response;
 use serde_json::json;
 
 use crate::App;
 use crate::http::{self, Ctx};
-
-/// RFC 9728: Protected Resource Metadata
-pub fn protected_resource(app: &App, ctx: &Ctx) -> Response {
-    let mcp = &app.cfg.mcp_url;
-    let data = json!({
-        "resource": mcp,
-        "resource_name": "TORO Server",
-        "authorization_servers": [app.cfg.issuer],
-        "scopes_supported": ["read", "write", "mcp"],
-        "bearer_methods_supported": ["header"],
-        "resource_documentation": app.cfg.connect_page(),
-    });
-    http::pretty_json(http::cors_headers(ctx), &data, 200)
-}
 
 /// RFC 8414 / OpenID Connect: Authorization Server Metadata
 pub fn authorization_server(app: &App, ctx: &Ctx) -> Response {
