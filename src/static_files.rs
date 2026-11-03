@@ -1,6 +1,6 @@
 //! バイナリに埋め込んだ静的ファイル (画面のスタイル、フォント、TORO のアイコン)
 
-use axum::http::header::{self, HeaderValue};
+use axum::http::header::{self, HeaderName, HeaderValue};
 use axum::response::Response;
 
 use crate::http;
@@ -32,12 +32,17 @@ pub fn serve(path: &str) -> Option<Response> {
             "image/png",
             IMAGE_CACHE,
         ),
-        "/_assets/icon-192.png" => (
+        "/icon-64.png" => (
+            include_bytes!("../assets/icons/icon-64.png"),
+            "image/png",
+            IMAGE_CACHE,
+        ),
+        "/icon-192.png" => (
             include_bytes!("../assets/icons/icon-192.png"),
             "image/png",
             IMAGE_CACHE,
         ),
-        "/_assets/icon-512.png" => (
+        "/icon-512.png" => (
             include_bytes!("../assets/icons/icon-512.png"),
             "image/png",
             IMAGE_CACHE,
@@ -56,5 +61,10 @@ pub fn serve(path: &str) -> Option<Response> {
     };
     let mut headers = http::public_headers();
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+    // AI クライアントの画面が、別のオリジンからアイコンを読めるように
+    headers.insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("cross-origin"),
+    );
     Some(http::respond(200, headers, content_type, bytes))
 }

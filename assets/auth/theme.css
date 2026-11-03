@@ -207,6 +207,10 @@ textarea {
   resize: vertical;
 }
 
+.roles {
+  list-style: none;
+}
+
 #token-message:empty {
   display: none;
 }

@@ -486,6 +486,37 @@ async fn home_shows_guest_and_session_and_escapes_names() {
 }
 
 #[tokio::test]
+async fn home_lists_every_role_by_id_without_a_bot_token() {
+    let server = start().await;
+    let cookie = server.login("member").await;
+    let page = server
+        .get_with_cookie("/", &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("<li>role-a</li>"));
+    assert!(page.contains("<li>role-b</li>"));
+    assert!(!page.contains("{{"));
+}
+
+#[tokio::test]
+async fn home_lists_role_names_with_a_bot_token() {
+    let server = start_with(|cfg| cfg.discord_bot_token = Some("bot-token".into())).await;
+    let cookie = server.login("member").await;
+    let page = server
+        .get_with_cookie("/", &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    // 名前はエスケープし、名前の分からないロールは ID のまま出す
+    assert!(page.contains("<li>&lt;b&gt;管理者&lt;/b&gt;</li>"));
+    assert!(page.contains("<li>role-b</li>"));
+    assert!(!page.contains("role-a"));
+}
+
+#[tokio::test]
 async fn unknown_paths_are_json_404() {
     let server = start().await;
     let res = server.get("/nope").await;

@@ -5,17 +5,18 @@ use axum::response::Response;
 
 use crate::App;
 use crate::auth::account::iso8601;
+use crate::auth::discord;
 use crate::auth::session::{self, Session};
 use crate::http::{self, Ctx};
-use crate::template::{insert_block, render};
+use crate::template::{escape, insert_block, render};
 
 const JST_OFFSET: i64 = 9 * 3600;
 
-pub fn handle(app: &App, ctx: &Ctx) -> Response {
-    let block = session::from_cookie(app, ctx).map_or_else(
-        || include_str!("../assets/home/guest.html").to_string(),
-        |session| session_block(app, &session),
-    );
+pub async fn handle(app: &App, ctx: &Ctx) -> Response {
+    let block = match session::from_cookie(app, ctx) {
+        Some(session) => session_block(app, &session).await,
+        None => include_str!("../assets/home/guest.html").to_string(),
+    };
     let page = insert_block(
         include_str!("../assets/home/home.html"),
         "USER_BLOCK",
@@ -30,7 +31,7 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
     res
 }
 
-fn session_block(app: &App, session: &Session) -> String {
+async fn session_block(app: &App, session: &Session) -> String {
     let (edit_class, edit_label, gauge_class) = if session.can_edit() {
         ("good", "編集できます", "")
     } else {
@@ -44,7 +45,7 @@ fn session_block(app: &App, session: &Session) -> String {
         ),
         None => ("未発行".to_string(), "トークンを発行する"),
     };
-    render(
+    let block = render(
         include_str!("../assets/home/session.html"),
         &[
             ("AVATAR_URL", session.avatar_url()),
@@ -54,7 +55,6 @@ fn session_block(app: &App, session: &Session) -> String {
             ("EDIT_CLASS", edit_class),
             ("EDIT_LABEL", edit_label),
             ("GAUGE_CLASS", gauge_class),
-            ("ROLES", &session.role_count().to_string()),
             ("TOKEN_STATUS", &token_status),
             ("TOKEN_ACTION", token_action),
             (
@@ -66,5 +66,23 @@ fn session_block(app: &App, session: &Session) -> String {
                 },
             ),
         ],
-    )
+    );
+    insert_block(&block, "ROLE_LIST", &role_list(app, session).await)
+}
+
+/// 名前が分かるロールは名前で、分からないものは ID で、すべて並べる
+async fn role_list(app: &App, session: &Session) -> String {
+    let ids = session.role_ids();
+    if ids.is_empty() {
+        return "なし".to_string();
+    }
+    let names = discord::role_names(app).await;
+    let items: String = ids
+        .iter()
+        .map(|id| {
+            let label = names.get(*id).map_or(*id, String::as_str);
+            format!("<li>{}</li>", escape(label))
+        })
+        .collect();
+    format!("<ul class=\"roles\">{items}</ul>")
 }

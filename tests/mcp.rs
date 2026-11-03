@@ -36,7 +36,7 @@ async fn initialize_echoes_the_protocol_version() {
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
         info["icons"][0]["src"],
-        "https://mcp.torosaba.net/_assets/icon-512.png"
+        "https://mcp.torosaba.net/icon-512.png"
     );
     assert_eq!(info["icons"][0]["mimeType"], "image/png");
     assert_eq!(
@@ -180,11 +180,17 @@ async fn mcp_host_still_serves_oauth_and_icons() {
         "/favicon.ico",
         "/favicon.png",
         "/apple-touch-icon.png",
-        "/_assets/icon-192.png",
-        "/_assets/icon-512.png",
+        "/icon-64.png",
+        "/icon-192.png",
+        "/icon-512.png",
     ] {
         let res = on_mcp(icon).send().await.unwrap();
         assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png", "{icon}");
+        assert_eq!(res.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+        assert_eq!(
+            res.headers()["cross-origin-resource-policy"],
+            "cross-origin"
+        );
         assert!(res.bytes().await.unwrap().starts_with(b"\x89PNG"), "{icon}");
     }
 

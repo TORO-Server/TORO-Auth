@@ -20,6 +20,6 @@ pub fn get(session: Option<&Session>) -> Value {
         "[AUTH USER IDENTIFICATION]\n- USER: {}\n- DISCORD ID: {}\n- WIKI EDIT PERMISSION: {permission}\n- ROLES COUNT: {}",
         session.username(),
         session.id(),
-        session.role_count(),
+        session.role_ids().len(),
     ))
 }

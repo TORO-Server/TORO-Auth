@@ -94,7 +94,7 @@ async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
         return Ok(http::moved(ctx, &moved));
     }
     match path {
-        "/" | "/index.html" => Ok(home::handle(app, ctx)),
+        "/" | "/index.html" => Ok(home::handle(app, ctx).await),
 
         "/api/auth/login" => Ok(auth::login::start(app, ctx)),
         "/api/auth/callback" => auth::login::callback(app, ctx).await,

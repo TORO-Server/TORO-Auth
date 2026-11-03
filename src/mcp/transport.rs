@@ -173,14 +173,19 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
                     "websiteUrl": app.cfg.wiki_url,
                     "icons": [
                         {
-                            "src": format!("{}/_assets/icon-512.png", app.cfg.mcp_url),
+                            "src": format!("{}/icon-512.png", app.cfg.mcp_url),
                             "mimeType": "image/png",
                             "sizes": ["512x512"],
                         },
                         {
-                            "src": format!("{}/_assets/icon-192.png", app.cfg.mcp_url),
+                            "src": format!("{}/icon-192.png", app.cfg.mcp_url),
                             "mimeType": "image/png",
                             "sizes": ["192x192"],
+                        },
+                        {
+                            "src": format!("{}/icon-64.png", app.cfg.mcp_url),
+                            "mimeType": "image/png",
+                            "sizes": ["64x64"],
                         },
                     ],
                 },

@@ -1,8 +1,16 @@
 //! Discord API
 
+use std::collections::HashMap;
+use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
+
 use serde_json::Value;
 
 use crate::App;
+
+const ROLE_NAMES_TTL: Duration = Duration::from_secs(300);
+/// 名前が取れなくても ID は出せるので、画面を長く待たせない
+const ROLE_NAMES_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn text(value: &Value, name: &str) -> Option<String> {
     value.get(name).and_then(Value::as_str).map(str::to_string)
@@ -152,6 +160,57 @@ pub async fn membership(app: &App, user_id: &str, access_token: &str) -> Members
         is_member,
         roles: Vec::new(),
     }
+}
+
+/// ギルドのロールの名前を、少しの間覚えておく
+#[derive(Default)]
+pub struct RoleNames {
+    cached: Mutex<Option<(Instant, HashMap<String, String>)>>,
+}
+
+impl RoleNames {
+    fn fresh(&self) -> Option<HashMap<String, String>> {
+        let cached = self.cached.lock().unwrap_or_else(PoisonError::into_inner);
+        cached
+            .as_ref()
+            .filter(|(fetched_at, _)| fetched_at.elapsed() < ROLE_NAMES_TTL)
+            .map(|(_, names)| names.clone())
+    }
+
+    fn store(&self, names: HashMap<String, String>) {
+        *self.cached.lock().unwrap_or_else(PoisonError::into_inner) = Some((Instant::now(), names));
+    }
+}
+
+/// ロール ID → 名前。名前は Bot トークンでしか読めないので、無ければ空のまま返す
+pub async fn role_names(app: &App) -> HashMap<String, String> {
+    let Some(bot_token) = &app.cfg.discord_bot_token else {
+        return HashMap::new();
+    };
+    if let Some(names) = app.role_names.fresh() {
+        return names;
+    }
+    let res = app
+        .http
+        .get(format!(
+            "{}/guilds/{}/roles",
+            app.cfg.discord_api, app.cfg.discord_guild_id
+        ))
+        .header("Authorization", format!("Bot {bot_token}"))
+        .timeout(ROLE_NAMES_TIMEOUT)
+        .send()
+        .await;
+    let Some(roles) = member_json(res).await else {
+        return HashMap::new();
+    };
+    let names: HashMap<String, String> = roles
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|role| Some((text(role, "id")?, text(role, "name")?)))
+        .collect();
+    app.role_names.store(names.clone());
+    names
 }
 
 async fn member_json(res: reqwest::Result<reqwest::Response>) -> Option<Value> {

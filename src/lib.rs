@@ -52,6 +52,7 @@ pub struct App {
     pub sse_streams: Arc<Semaphore>,
     pub wiki_index: wiki::search::Index,
     pub tokens: auth::tokens::TokenStore,
+    pub role_names: auth::discord::RoleNames,
 }
 
 impl App {
@@ -66,6 +67,7 @@ impl App {
         Ok(Self {
             cfg,
             tokens,
+            role_names: Default::default(),
             http,
             used_codes: Mutex::new(HashMap::new()),
             requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),

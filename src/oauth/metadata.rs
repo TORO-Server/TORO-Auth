@@ -11,10 +11,12 @@ pub fn protected_resource(app: &App, ctx: &Ctx) -> Response {
     let mcp = &app.cfg.mcp_url;
     let data = json!({
         "resource": mcp,
+        "resource_name": "TORO Server",
+        "logo_uri": format!("{mcp}/icon-512.png"),
         "authorization_servers": [app.cfg.issuer],
         "scopes_supported": ["read", "write", "mcp"],
         "bearer_methods_supported": ["header"],
-        "resource_documentation": format!("{mcp}/"),
+        "resource_documentation": app.cfg.connect_page(),
     });
     http::pretty_json(http::cors_headers(ctx), &data, 200)
 }
@@ -34,7 +36,8 @@ pub fn authorization_server(app: &App, ctx: &Ctx) -> Response {
         "code_challenge_methods_supported": ["S256"],
         "authorization_response_iss_parameter_supported": true,
         "scopes_supported": ["read", "write", "mcp"],
-        "service_documentation": format!("{}/", app.cfg.mcp_url),
+        "service_documentation": app.cfg.connect_page(),
+        "logo_uri": format!("{}/icon-512.png", app.cfg.mcp_url),
     });
     http::pretty_json(http::cors_headers(ctx), &data, 200)
 }

@@ -70,11 +70,13 @@ impl Session {
         self.can_edit() && scope_allows
     }
 
-    pub fn role_count(&self) -> usize {
+    /// ログインしたときのロールの ID
+    pub fn role_ids(&self) -> Vec<&str> {
         self.claims
             .get("roles")
             .and_then(Value::as_array)
-            .map_or(0, Vec::len)
+            .map(|roles| roles.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default()
     }
 
     pub fn avatar(&self) -> Option<&str> {

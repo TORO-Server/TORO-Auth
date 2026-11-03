@@ -77,6 +77,23 @@ async fn start_fake_discord() -> String {
                 _ => json_response(200, json!({ "roles": ["role-a", "role-b"] })),
             },
             "/users/@me/guilds" => json_response(200, json!([])),
+            // 本物と同じく、Bot トークンでだけ読める
+            p if p == format!("/guilds/{GUILD}/roles") => {
+                let is_bot = parts
+                    .headers
+                    .get(header::AUTHORIZATION)
+                    .is_some_and(|h| h.as_bytes().starts_with(b"Bot "));
+                if !is_bot {
+                    return json_response(401, json!({ "message": "401: Unauthorized" }));
+                }
+                json_response(
+                    200,
+                    json!([
+                        { "id": "role-a", "name": "<b>管理者</b>" },
+                        { "id": "everyone", "name": "@everyone" },
+                    ]),
+                )
+            }
             _ => json_response(404, json!({ "message": "not found" })),
         }
     });
