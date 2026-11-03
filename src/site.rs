@@ -6,6 +6,8 @@
 //!
 //! 人向けの正本は Wiki の「サービスのURLと役割」のページ。
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 use url::Url;
 
@@ -26,6 +28,12 @@ pub enum Role {
 
 fn host_of(url: &str) -> Option<String> {
     Url::parse(url).ok()?.host_str().map(str::to_string)
+}
+
+/// 本体を埋め込んだ TORO のアイコン。Gemini は CSP で外部の画像を読めないので、AI クライアントにはこれを伝える
+pub fn icon_data_uri() -> String {
+    let png = STANDARD.encode(include_bytes!("../assets/icons/icon-64.png"));
+    format!("data:image/png;base64,{png}")
 }
 
 impl Config {

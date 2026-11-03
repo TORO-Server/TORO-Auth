@@ -6,8 +6,6 @@ use axum::http::Method;
 use axum::http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 
@@ -15,6 +13,7 @@ use super::tools;
 use crate::App;
 use crate::auth::session;
 use crate::http::{self, Ctx};
+use crate::site;
 
 /// コネクタの名前。どのクライアントにもこの表記で見せる
 const SERVER_NAME: &str = "TORO Server";
@@ -144,12 +143,11 @@ fn sse(app: &App) -> Response {
 /// 本体を埋め込んだ data: URI だけを伝える。
 /// Gemini は CSP で外部の画像を読めないのに、URL があれば大きい方を選んで壊れた画像を出す
 fn server_icons() -> Value {
-    let embedded = STANDARD.encode(include_bytes!("../../assets/icons/icon-192.png"));
     json!([
         {
-            "src": format!("data:image/png;base64,{embedded}"),
+            "src": site::icon_data_uri(),
             "mimeType": "image/png",
-            "sizes": ["192x192"],
+            "sizes": ["64x64"],
         },
     ])
 }
