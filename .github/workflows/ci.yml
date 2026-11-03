@@ -24,6 +24,9 @@ jobs:
 
       - run: cargo fmt --check
 
+      # 画面の TypeScript の型を確かめる。JavaScript にするのは build.rs の仕事で、Node はここでしか使わない
+      - run: npx --yes --package typescript@7.0.2 tsc -p tsconfig.json
+
       - run: cargo clippy --all-targets --locked -- -D warnings
 
       - run: cargo test --locked

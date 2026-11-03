@@ -1,4 +1,4 @@
-//! バイナリに埋め込んだ静的ファイル (画面のスタイル、フォント、TORO のアイコン)
+//! バイナリに埋め込んだ静的ファイル (画面のスタイルとスクリプト、フォント、TORO のアイコン)
 
 use axum::http::header::{self, HeaderName, HeaderValue};
 use axum::response::Response;
@@ -14,6 +14,12 @@ pub fn serve(path: &str) -> Option<Response> {
         "/_assets/auth.css" => (
             include_bytes!("../assets/auth/theme.css"),
             "text/css; charset=utf-8",
+            STYLE_CACHE,
+        ),
+        // 原本は assets/home/token.ts。build.rs が JavaScript にする
+        "/_assets/token.js" => (
+            include_bytes!(concat!(env!("OUT_DIR"), "/token.js")),
+            "text/javascript; charset=utf-8",
             STYLE_CACHE,
         ),
         "/_assets/favicon.svg" => (

@@ -62,6 +62,8 @@ cargo test
 
 `tests/common/mod.rs` が偽の Discord と GitHub を立てるので、試験に秘密やネットワークは要りません。
 
+画面のスクリプトは TypeScript で書きます (`assets/home/token.ts`)。`build.rs` がビルドのときに JavaScript にしてバイナリに埋め込むので、ビルドに Node は要りません。型は CI の `tsc` が確かめます。
+
 手元で動かすときは `.env.example` の必須の値を環境変数に入れ、`PUBLIC_AUTH_URL=http://localhost:8080`、`PUBLIC_API_URL=http://api.localhost:8080`、`PUBLIC_MCP_URL=http://mcp.localhost:8080` と、画面を動かす Origin を `CORS_ORIGINS` に足して `cargo run` します。ブラウザは `*.localhost` を手元につなぎます。
 
 ## 設定

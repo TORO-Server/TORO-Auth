@@ -14,65 +14,6 @@
     {{USER_BLOCK}}
   </main>
 
-  <script>
-    const issue = document.getElementById('issue-token');
-    if (issue) {
-      const message = document.getElementById('token-message');
-      const output = document.getElementById('token-value');
-      let confirming = false;
-
-      async function issueToken() {
-        issue.disabled = true;
-        try {
-          const res = await fetch('/api/auth/token', { method: 'POST' });
-          const data = await res.json();
-          if (!data.token) {
-            message.textContent = 'トークンを発行できませんでした: ' + (data.error || res.status);
-            return;
-          }
-          output.value = data.token;
-          document.getElementById('token-win').hidden = false;
-          const japanTime = new Date(Date.parse(data.expires_at) + 9 * 3600 * 1000);
-          document.getElementById('token-status').textContent = japanTime.toISOString().slice(0, 10) + ' まで有効';
-          issue.dataset.exists = 'true';
-          issue.textContent = 'トークンを再作成する';
-          message.textContent = '';
-          output.focus();
-          output.select();
-        } catch (error) {
-          message.textContent = '通信に失敗しました: ' + error.message;
-        } finally {
-          issue.disabled = false;
-        }
-      }
-
-      issue.addEventListener('click', () => {
-        if (issue.dataset.exists === 'true' && !confirming) {
-          confirming = true;
-          issue.textContent = '本当に再作成する';
-          message.textContent = 'いまのトークンは使えなくなります。';
-          return;
-        }
-        confirming = false;
-        issueToken();
-      });
-
-      document.getElementById('copy-token').addEventListener('click', async (event) => {
-        try {
-          await navigator.clipboard.writeText(output.value);
-          event.target.textContent = 'コピーしました';
-        } catch {
-          output.select();
-          event.target.textContent = '選択したのでコピーしてください';
-        }
-      });
-
-      // 戻るボタンなどで、トークンが画面に戻ってこないようにする
-      addEventListener('pagehide', () => {
-        output.value = '';
-        document.getElementById('token-win').hidden = true;
-      });
-    }
-  </script>
+  <script type="module" src="/_assets/token.js?v={{V}}"></script>
 </body>
 </html>

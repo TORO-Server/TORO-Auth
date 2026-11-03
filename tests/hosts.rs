@@ -276,4 +276,14 @@ async fn asset_urls_change_with_each_version() {
     let home = server.get("/").await.text().await.unwrap();
     assert!(home.contains(&format!("/_assets/auth.css?v={version}")));
     assert!(home.contains(&format!("/_assets/favicon.svg?v={version}")));
+    assert!(home.contains(&format!("/_assets/token.js?v={version}")));
+}
+
+#[tokio::test]
+async fn token_script_is_served_without_types() {
+    let server = start().await;
+    let script = server.get("/_assets/token.js").await.text().await.unwrap();
+    assert!(script.contains("/api/auth/token"));
+    assert!(!script.contains("TokenResponse"));
+    assert!(!script.contains("HTMLButtonElement"));
 }
