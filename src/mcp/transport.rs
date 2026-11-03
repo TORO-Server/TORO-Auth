@@ -6,6 +6,8 @@ use axum::http::Method;
 use axum::http::header::{self, HeaderMap, HeaderName, HeaderValue};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 
@@ -139,6 +141,28 @@ fn sse(app: &App) -> Response {
     res
 }
 
+/// 先頭は本体を埋め込んだ data: URI。Gemini は CSP で外部の画像を読めず、先頭の icons を使うので、URL では表示できない
+fn server_icons(mcp_url: &str) -> Value {
+    let embedded = STANDARD.encode(include_bytes!("../../assets/icons/icon-64.png"));
+    json!([
+        {
+            "src": format!("data:image/png;base64,{embedded}"),
+            "mimeType": "image/png",
+            "sizes": ["64x64"],
+        },
+        {
+            "src": format!("{mcp_url}/icon-512.png"),
+            "mimeType": "image/png",
+            "sizes": ["512x512"],
+        },
+        {
+            "src": format!("{mcp_url}/icon-192.png"),
+            "mimeType": "image/png",
+            "sizes": ["192x192"],
+        },
+    ])
+}
+
 async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
     let Ok(body) = serde_json::from_slice::<Value>(&ctx.body) else {
         let parse_error = json!({ "jsonrpc": "2.0", "id": null, "error": { "code": -32700, "message": "Parse error" } });
@@ -171,23 +195,7 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
                     "title": SERVER_NAME,
                     "version": SERVER_VERSION,
                     "websiteUrl": app.cfg.wiki_url,
-                    "icons": [
-                        {
-                            "src": format!("{}/icon-512.png", app.cfg.mcp_url),
-                            "mimeType": "image/png",
-                            "sizes": ["512x512"],
-                        },
-                        {
-                            "src": format!("{}/icon-192.png", app.cfg.mcp_url),
-                            "mimeType": "image/png",
-                            "sizes": ["192x192"],
-                        },
-                        {
-                            "src": format!("{}/icon-64.png", app.cfg.mcp_url),
-                            "mimeType": "image/png",
-                            "sizes": ["64x64"],
-                        },
-                    ],
+                    "icons": server_icons(&app.cfg.mcp_url),
                 },
                 "instructions": "TORO Server provides tools to interact with the TORO Server Wiki and server status.",
             }))
