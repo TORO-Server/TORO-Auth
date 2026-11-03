@@ -8,13 +8,13 @@ FROM rust:1.99-alpine@sha256:7e9e2d068a107a2adafd19930011178d14a78326053cd4c3a9f
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 # 依存だけを先にビルドして、ソースだけを変えたときのビルドを速くする
-COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs \
+COPY Cargo.toml Cargo.lock build.rs ./
+RUN mkdir -p src assets/home && echo 'fn main() {}' > src/main.rs && touch src/lib.rs assets/home/token.ts \
  && cargo build --release --locked \
- && rm -rf src
+ && rm -rf src assets
 COPY src ./src
 COPY assets ./assets
-RUN touch src/main.rs src/lib.rs && cargo build --release --locked
+RUN touch src/main.rs src/lib.rs assets/home/token.ts && cargo build --release --locked
 RUN mkdir /data-empty
 
 FROM scratch

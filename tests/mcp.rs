@@ -453,6 +453,7 @@ async fn theme_files_are_served_with_the_right_types() {
     let server = start().await;
     for (path, content_type) in [
         ("/_assets/auth.css", "text/css; charset=utf-8"),
+        ("/_assets/token.js", "text/javascript; charset=utf-8"),
         ("/_assets/pixel.woff2", "font/woff2"),
         ("/_assets/favicon.svg", "image/svg+xml"),
         ("/_assets/OFL.txt", "text/plain; charset=utf-8"),
