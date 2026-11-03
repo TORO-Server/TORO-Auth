@@ -31,7 +31,7 @@ const DEFAULT_AVATAR: &str = concat!("/_assets/favicon.svg?v=", env!("CARGO_PKG_
 pub const SESSION_COOKIE: &str = "__Host-toro_session";
 const SESSION_MAX_AGE: i64 = 30 * 86400;
 const COOKIE_ATTRIBUTES: &str = "Path=/; HttpOnly; Secure; SameSite=Lax";
-/// Worker 版が .torosaba.net に置いた Cookie。古いトークンをブラウザに残さないよう消す
+/// 以前の実装が .torosaba.net に置いていた Cookie。古いトークンをブラウザに残さないよう消す
 const LEGACY_COOKIES: [&str; 2] = ["toro_session", "wiki_session"];
 
 pub struct Session {
