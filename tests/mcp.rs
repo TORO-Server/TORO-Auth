@@ -44,6 +44,7 @@ async fn initialize_echoes_the_protocol_version() {
             .starts_with("data:image/png;base64,iVBOR")
     );
     assert_eq!(icons[0]["mimeType"], "image/png");
+    assert_eq!(icons[0]["sizes"][0], "64x64");
     assert_eq!(
         body["result"]["capabilities"]["tools"]["listChanged"],
         false

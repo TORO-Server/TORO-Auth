@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::App;
 use crate::http::{self, Ctx};
+use crate::site;
 
 /// RFC 9728: Protected Resource Metadata
 pub fn protected_resource(app: &App, ctx: &Ctx) -> Response {
@@ -12,7 +13,7 @@ pub fn protected_resource(app: &App, ctx: &Ctx) -> Response {
     let data = json!({
         "resource": mcp,
         "resource_name": "TORO Server",
-        "logo_uri": format!("{mcp}/icon-512.png"),
+        "logo_uri": site::icon_data_uri(),
         "authorization_servers": [app.cfg.issuer],
         "scopes_supported": ["read", "write", "mcp"],
         "bearer_methods_supported": ["header"],
@@ -37,7 +38,7 @@ pub fn authorization_server(app: &App, ctx: &Ctx) -> Response {
         "authorization_response_iss_parameter_supported": true,
         "scopes_supported": ["read", "write", "mcp"],
         "service_documentation": app.cfg.connect_page(),
-        "logo_uri": format!("{}/icon-512.png", app.cfg.mcp_url),
+        "logo_uri": site::icon_data_uri(),
     });
     http::pretty_json(http::cors_headers(ctx), &data, 200)
 }
