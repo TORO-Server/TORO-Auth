@@ -183,6 +183,14 @@ pub fn busy() -> Response {
     )
 }
 
+/// 受け取っただけで返すものが無いとき (MCP の通知)
+pub fn accepted(headers: HeaderMap) -> Response {
+    let mut res = Response::new(Body::empty());
+    *res.status_mut() = StatusCode::ACCEPTED;
+    *res.headers_mut() = headers;
+    res
+}
+
 pub fn no_content(headers: HeaderMap) -> Response {
     let mut res = Response::new(Body::empty());
     *res.status_mut() = StatusCode::NO_CONTENT;

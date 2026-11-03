@@ -1,7 +1,7 @@
 //! 結合試験の共通部品: 偽の Discord / GitHub と、試験用に起動した本体
 #![allow(dead_code)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -90,6 +90,19 @@ pub struct FakeGitHub {
     pub files: Mutex<HashMap<String, (String, String)>>,
     pub commits: Mutex<Vec<Value>>,
     pub requests: Mutex<Vec<String>>,
+    /// ツリーに載せる原稿: パス → (sha, 本文)
+    pub docs: Mutex<BTreeMap<String, (String, String)>>,
+}
+
+impl FakeGitHub {
+    pub fn blob_requests(&self) -> usize {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|uri| uri.contains("/git/blobs/"))
+            .count()
+    }
 }
 
 async fn start_fake_github(state: Arc<FakeGitHub>) -> String {
@@ -101,29 +114,29 @@ async fn start_fake_github(state: Arc<FakeGitHub>) -> String {
             let path = parts.uri.path().to_string();
             state.requests.lock().unwrap().push(parts.uri.to_string());
 
-            if path.ends_with("/search/code") {
-                return json_response(
-                    200,
-                    json!({ "items": [
-                        { "path": "docs/hit.md", "repository": { "full_name": "TORO-Server/TORO-Wiki" } },
-                        { "path": "docs/secret.md", "repository": { "full_name": "TORO-Server/Private" } },
-                        { "path": "README.md", "repository": { "full_name": "TORO-Server/TORO-Wiki" } },
-                    ] }),
-                );
-            }
             if path.ends_with("/git/trees/main") {
-                return json_response(
-                    200,
-                    json!({ "tree": [
-                        { "path": "docs/01_About/a.md", "type": "blob" },
-                        { "path": "docs/02_Guide/b.md", "type": "blob" },
-                        { "path": "docs/image.png", "type": "blob" },
-                        { "path": "docs/01_About", "type": "tree" },
-                        { "path": "README.md", "type": "blob" },
-                    ] }),
-                );
+                let mut tree: Vec<Value> = state
+                    .docs
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .map(|(path, (sha, _))| json!({ "path": path, "type": "blob", "sha": sha }))
+                    .collect();
+                tree.push(json!({ "path": "docs/image.png", "type": "blob", "sha": "png" }));
+                tree.push(json!({ "path": "docs/01_About", "type": "tree", "sha": "dir" }));
+                tree.push(json!({ "path": "README.md", "type": "blob", "sha": "readme" }));
+                return json_response(200, json!({ "tree": tree }));
             }
-
+            if let Some(sha) = path.split("/git/blobs/").nth(1) {
+                let docs = state.docs.lock().unwrap();
+                return match docs.values().find(|(s, _)| s == sha) {
+                    Some((_, content)) => json_response(
+                        200,
+                        json!({ "sha": sha, "encoding": "base64", "content": STANDARD.encode(content) }),
+                    ),
+                    None => json_response(404, json!({ "message": "Not Found" })),
+                };
+            }
             let Some(file_path) = path.strip_prefix("/repos/TORO-Server/TORO-Wiki/contents/") else {
                 return json_response(404, json!({ "message": "Not Found" }));
             };
@@ -175,6 +188,22 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let github = Arc::new(FakeGitHub::default());
+    github.docs.lock().unwrap().extend([
+        (
+            "docs/01_About/a.md".to_string(),
+            (
+                "sha-a".to_string(),
+                "# 概要`nTrainCarts と 電車 の話".to_string(),
+            ),
+        ),
+        (
+            "docs/02_Guide/b.md".to_string(),
+            (
+                "sha-b".to_string(),
+                "# ガイド`nmarumasign の使い方".to_string(),
+            ),
+        ),
+    ]);
 
     let mut cfg = Config {
         port: 0,
@@ -194,6 +223,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         github_repo: "TORO-Wiki".into(),
         github_branch: "main".into(),
         github_api: start_fake_github(github.clone()).await,
+        wiki_index_ttl_secs: 300,
         // 誰も待っていないポート
         mc_status_addr: "127.0.0.1:9".into(),
         mc_status_host: "torosaba.net".into(),

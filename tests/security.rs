@@ -347,6 +347,13 @@ async fn consent_page_shows_the_requested_scope() {
     let path = format!("{}&scope=read", authorize_path("https://a.example/cb", "x"));
     let page = server.get(&path).await.text().await.unwrap();
     assert!(page.contains("REQUESTED SCOPE: read"));
+    assert!(page.contains("not requested (read only)"));
+    assert!(!page.contains("direct commit to repository"));
+    assert!(!page.contains("{{"));
+
+    let path = format!("{}&scope=mcp", authorize_path("https://a.example/cb", "x"));
+    let page = server.get(&path).await.text().await.unwrap();
+    assert!(page.contains("direct commit to repository"));
 }
 
 #[tokio::test]

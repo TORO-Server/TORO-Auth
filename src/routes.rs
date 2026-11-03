@@ -74,6 +74,11 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
         return Ok(res);
     }
 
+    // RFC 9728: 接続先に /mcp を登録したクライアントは、パスを付けて聞いてくる
+    if path.starts_with("/.well-known/oauth-protected-resource/") {
+        return Ok(oauth::metadata::protected_resource(app, ctx));
+    }
+
     // OAuth 2.0 / MCP の発見 (どのホストでも最優先)
     match path {
         "/.well-known/oauth-protected-resource" => {

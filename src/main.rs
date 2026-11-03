@@ -21,6 +21,12 @@ async fn main() {
     let port = cfg.port;
     let app = Arc::new(App::new(cfg).expect("HTTP client"));
 
+    // 最初の検索を待たせないよう、原稿を先に読んでおく
+    let warm = app.clone();
+    tokio::spawn(async move {
+        warm.wiki_index.search(&warm, "").await;
+    });
+
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .expect("bind");

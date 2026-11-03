@@ -46,10 +46,12 @@ pub struct App {
     pub used_codes: Mutex<HashMap<String, i64>>,
     pub requests: Semaphore,
     pub sse_streams: Arc<Semaphore>,
+    pub wiki_index: wiki::search::Index,
 }
 
 impl App {
     pub fn new(cfg: Config) -> Result<Self, reqwest::Error> {
+        let wiki_index_ttl = Duration::from_secs(cfg.wiki_index_ttl_secs);
         let http = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(5))
             .timeout(Duration::from_secs(30))
@@ -61,6 +63,7 @@ impl App {
             used_codes: Mutex::new(HashMap::new()),
             requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),
             sse_streams: Arc::new(Semaphore::new(MAX_SSE_STREAMS)),
+            wiki_index: wiki::search::Index::new(wiki_index_ttl),
         })
     }
 }

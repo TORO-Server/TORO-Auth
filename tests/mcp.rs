@@ -81,7 +81,7 @@ async fn notifications_and_errors() {
             .rpc("notifications/initialized", json!({}), None)
             .await
             .status(),
-        204
+        202
     );
 
     let res = server.rpc("no/such", json!({}), None).await;
@@ -96,7 +96,7 @@ async fn notifications_and_errors() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 204);
+    assert_eq!(res.status(), 202);
 
     let res = server
         .client
@@ -308,17 +308,145 @@ async fn wiki_save_tool_checks_permission_and_commits() {
 }
 
 #[tokio::test]
-async fn wiki_search_only_shows_docs_of_this_repository() {
+async fn wiki_search_finds_text_in_documents() {
     let server = start().await;
-    let (text, is_error) = server
-        .tool(
-            "wiki_search",
-            json!({ "query": "x repo:TORO-Server/Private" }),
-            None,
-        )
+    let search = |query: &'static str| server.tool("wiki_search", json!({ "query": query }), None);
+
+    assert_eq!(
+        search("traincarts").await.0,
+        "検索結果 \"traincarts\":\n\n- 01_About/a.md"
+    );
+    assert_eq!(
+        search("電車 TrainCarts").await.0,
+        "検索結果 \"電車 TrainCarts\":\n\n- 01_About/a.md"
+    );
+    assert_eq!(
+        search("02_guide").await.0,
+        "検索結果 \"02_guide\":\n\n- 02_Guide/b.md"
+    );
+    assert!(search("無い語").await.0.contains("見つかりませんでした"));
+    // GitHub の検索の修飾子は、ただの語として扱う
+    assert!(
+        search("traincarts repo:TORO-Server/Private")
+            .await
+            .0
+            .contains("見つかりませんでした")
+    );
+    assert!(search("   ").await.0.contains("見つかりませんでした"));
+}
+
+#[tokio::test]
+async fn wiki_search_reads_each_document_once() {
+    let server = start().await;
+    for _ in 0..3 {
+        server
+            .tool("wiki_search", json!({ "query": "電車" }), None)
+            .await;
+    }
+    assert_eq!(server.github.blob_requests(), 2);
+}
+
+#[tokio::test]
+async fn wiki_search_picks_up_changes_after_the_interval() {
+    let server = start_with(|cfg| cfg.wiki_index_ttl_secs = 0).await;
+    server
+        .tool("wiki_search", json!({ "query": "x" }), None)
         .await;
-    assert!(!is_error);
-    assert_eq!(text, "検索結果 \"x repo:TORO-Server/Private\":\n\n- hit.md");
+    assert_eq!(server.github.blob_requests(), 2);
+
+    {
+        let mut docs = server.github.docs.lock().unwrap();
+        docs.insert(
+            "docs/01_About/a.md".to_string(),
+            ("sha-a2".to_string(), "新しい本文".to_string()),
+        );
+        docs.remove("docs/02_Guide/b.md");
+    }
+    let (text, _) = server
+        .tool("wiki_search", json!({ "query": "新しい" }), None)
+        .await;
+    assert_eq!(text, "検索結果 \"新しい\":\n\n- 01_About/a.md");
+    // 変わった 1 件だけを読み直す
+    assert_eq!(server.github.blob_requests(), 3);
+
+    let (text, _) = server
+        .tool("wiki_search", json!({ "query": "marumasign" }), None)
+        .await;
+    assert!(text.contains("見つかりませんでした"));
+    let (text, _) = server
+        .tool("wiki_search", json!({ "query": "電車" }), None)
+        .await;
+    assert!(text.contains("見つかりませんでした"));
+}
+
+#[tokio::test]
+async fn invalid_tokens_get_401_so_clients_can_reauthorize() {
+    let server = start().await;
+    let expired = jwt::sign(
+        &json!({ "id": "1", "username": "u", "exp": jwt::now() - 1 }),
+        JWT_SECRET,
+    );
+    let other_key = jwt::sign(&json!({ "id": "1", "username": "u" }), "another-secret");
+
+    for token in [expired.as_str(), other_key.as_str(), "garbage"] {
+        let res = server.rpc("tools/list", json!({}), Some(token)).await;
+        assert_eq!(res.status(), 401);
+        let challenge = res.headers()[header::WWW_AUTHENTICATE].to_str().unwrap();
+        assert!(challenge.contains("error=\"invalid_token\""));
+        assert!(challenge.contains(
+            "resource_metadata=\"https://mcp.torosaba.net/.well-known/oauth-protected-resource\""
+        ));
+
+        let res = server
+            .client
+            .get(server.url("/mcp"))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 401);
+    }
+
+    // トークンなしと、有効なトークンは今までどおり
+    assert_eq!(
+        server.rpc("tools/list", json!({}), None).await.status(),
+        200
+    );
+    let valid = editor_token();
+    assert_eq!(
+        server
+            .rpc("tools/list", json!({}), Some(&valid))
+            .await
+            .status(),
+        200
+    );
+}
+
+#[tokio::test]
+async fn resource_metadata_is_served_for_clients_using_a_path() {
+    let server = start().await;
+    let res = server
+        .client
+        .get(server.url("/.well-known/oauth-protected-resource/mcp"))
+        .header(header::HOST, MCP_HOST)
+        .send()
+        .await
+        .unwrap();
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["resource"], "https://mcp.torosaba.net");
+    assert!(body["authorization_servers"].is_array());
+}
+
+#[tokio::test]
+async fn delete_is_not_supported() {
+    let server = start().await;
+    let res = server
+        .client
+        .delete(server.url("/mcp"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 405);
 }
 
 #[tokio::test]

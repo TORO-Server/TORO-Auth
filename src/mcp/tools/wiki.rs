@@ -8,6 +8,9 @@ use crate::auth::session::Session;
 use crate::wiki::github::{self, Commit};
 use crate::wiki::path;
 
+/// 検索結果を返す上限
+const MAX_SEARCH_RESULTS: usize = 30;
+
 fn bullets(items: &[String]) -> String {
     items
         .iter()
@@ -92,22 +95,17 @@ pub async fn save_page(app: &App, args: &Value, session: Option<&Session>) -> Va
 
 pub async fn search(app: &App, args: &Value) -> Value {
     let query = arg(args, "query");
-    let Some(hits) = github::search_code(app, query).await else {
-        // 全文検索が使えないときは、パスの一致で答える
-        let lowered = query.to_lowercase();
-        let matches: Vec<String> = github::list_pages(app, None)
-            .await
-            .into_iter()
-            .filter(|page| page.to_lowercase().contains(&lowered))
-            .collect();
-        return success(&format!(
-            "検索結果 (パス一致): {} 件\n\n{}",
-            matches.len(),
-            bullets(&matches)
-        ));
+    let Some(hits) = app.wiki_index.search(app, query).await else {
+        return failure("Error: Wiki の検索に失敗しました。しばらくしてからやり直してください。");
     };
     let body = if hits.is_empty() {
         "一致するドキュメントは見つかりませんでした。".to_string()
+    } else if hits.len() > MAX_SEARCH_RESULTS {
+        format!(
+            "{}\n\n(ほかに {} 件)",
+            bullets(&hits[..MAX_SEARCH_RESULTS]),
+            hits.len() - MAX_SEARCH_RESULTS
+        )
     } else {
         bullets(&hits)
     };

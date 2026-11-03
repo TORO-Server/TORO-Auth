@@ -25,6 +25,8 @@ pub struct Config {
     pub github_repo: String,
     pub github_branch: String,
     pub github_api: String,
+    /// Wiki の検索が、原稿の変更を見に行く間隔
+    pub wiki_index_ttl_secs: u64,
 
     /// 稼働状態を尋ねる先 (host:port)
     pub mc_status_addr: String,
@@ -99,6 +101,7 @@ impl Config {
             github_repo: or_default("GITHUB_REPO", "TORO-Wiki"),
             github_branch: or_default("GITHUB_BRANCH", "main"),
             github_api: trimmed("GITHUB_API", "https://api.github.com"),
+            wiki_index_ttl_secs: 300,
             mc_status_addr: or_default("MC_STATUS_ADDR", "toro-velocity:25565"),
             mc_status_host: or_default("MC_STATUS_HOST", "torosaba.net"),
         })

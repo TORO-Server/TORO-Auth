@@ -135,68 +135,70 @@ pub async fn commit_file(app: &App, commit: &Commit<'_>) -> Result<(String, Stri
     ))
 }
 
-/// docs/ の下の原稿の一覧 (docs/ を除いたパス)。取得に失敗したら空
-pub async fn list_pages(app: &App, category: Option<&str>) -> Vec<String> {
+pub struct DocBlob {
+    /// docs/ から始まるパス
+    pub path: String,
+    pub sha: String,
+}
+
+/// docs/ の下の原稿のパスと SHA。取得に失敗したら None
+pub async fn doc_blobs(app: &App) -> Option<Vec<DocBlob>> {
     let url = format!(
         "{}/git/trees/{}?recursive=1",
         repo_url(app),
         encode_uri_component(&app.cfg.github_branch)
     );
-    let Ok(res) = request(app, reqwest::Method::GET, url).send().await else {
-        return Vec::new();
-    };
-    if !res.status().is_success() {
-        return Vec::new();
-    }
-    let Ok(data) = res.json::<Value>().await else {
-        return Vec::new();
-    };
-    data["tree"]
-        .as_array()
-        .map(|tree| {
-            tree.iter()
-                .filter(|item| item["type"] == "blob")
-                .filter_map(|item| item["path"].as_str())
-                .filter(|path| path.starts_with("docs/") && path.ends_with(".md"))
-                .map(|path| path.trim_start_matches("docs/").to_string())
-                .filter(|path| category.is_none_or(|c| path.starts_with(c)))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// 全文検索。使えないときは None
-///
-/// クエリに `repo:` を混ぜても他のリポジトリを覗けないよう、結果をこのリポジトリの docs/ に絞る
-pub async fn search_code(app: &App, query: &str) -> Option<Vec<String>> {
-    let cfg = &app.cfg;
-    let full_name = format!("{}/{}", cfg.github_owner, cfg.github_repo);
-    let q = encode_uri_component(&format!("{query} repo:{full_name} path:docs"));
-    let url = format!("{}/search/code?q={q}", cfg.github_api);
     let res = request(app, reqwest::Method::GET, url).send().await.ok()?;
     if !res.status().is_success() {
         return None;
     }
     let data: Value = res.json().await.ok()?;
     Some(
-        data["items"]
-            .as_array()
-            .map(|items| {
-                items
-                    .iter()
-                    .filter(|item| {
-                        item["repository"]["full_name"]
-                            .as_str()
-                            .is_some_and(|n| n.eq_ignore_ascii_case(&full_name))
-                    })
-                    .filter_map(|item| {
-                        item["path"]
-                            .as_str()?
-                            .strip_prefix("docs/")
-                            .map(str::to_string)
-                    })
-                    .collect()
+        data["tree"]
+            .as_array()?
+            .iter()
+            .filter(|item| item["type"] == "blob")
+            .filter_map(|item| {
+                let path = item["path"].as_str()?;
+                let is_doc = path.starts_with("docs/") && path.ends_with(".md");
+                is_doc.then(|| DocBlob {
+                    path: path.to_string(),
+                    sha: item["sha"].as_str().unwrap_or("").to_string(),
+                })
             })
-            .unwrap_or_default(),
+            .collect(),
     )
+}
+
+/// docs/ の下の原稿の一覧 (docs/ を除いたパス)。取得に失敗したら空
+pub async fn list_pages(app: &App, category: Option<&str>) -> Vec<String> {
+    doc_blobs(app)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|blob| blob.path.trim_start_matches("docs/").to_string())
+        .filter(|path| category.is_none_or(|c| path.starts_with(c)))
+        .collect()
+}
+
+/// 原稿の本文を SHA で読む
+pub async fn blob_text(app: &App, sha: &str) -> Option<String> {
+    let url = format!("{}/git/blobs/{sha}", repo_url(app));
+    let res = request(app, reqwest::Method::GET, url).send().await.ok()?;
+    if !res.status().is_success() {
+        return None;
+    }
+    let data: Value = res.json().await.ok()?;
+    decode_content(&data["content"]).ok()
+}
+
+fn decode_content(content: &Value) -> Result<String, String> {
+    let encoded: String = content
+        .as_str()
+        .unwrap_or("")
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    let bytes = STANDARD.decode(encoded).map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }

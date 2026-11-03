@@ -28,10 +28,47 @@ fn headers(ctx: &Ctx) -> HeaderMap {
 }
 
 pub async fn handle(app: &App, ctx: &Ctx) -> Response {
+    // トークンなしの利用は認めるが、無効なトークンは匿名として扱わない。
+    // 401 を返さないと、クライアントは再認可が要ることに気づけない
+    if session::bearer_token(ctx).is_some() && session::from_bearer(app, ctx).is_none() {
+        return unauthorized(app, ctx);
+    }
+    // セッションを持たないので、切断するものが無い (MCP の仕様どおり 405)
+    if ctx.method == Method::DELETE {
+        let mut headers = headers(ctx);
+        headers.insert(
+            header::ALLOW,
+            HeaderValue::from_static("GET, POST, OPTIONS"),
+        );
+        return http::respond(
+            405,
+            headers,
+            http::JSON_UTF8,
+            json!({ "error": "Method Not Allowed" }).to_string(),
+        );
+    }
     if ctx.method == Method::GET || ctx.method == Method::HEAD {
         return handle_get(app, ctx);
     }
     handle_rpc(app, ctx).await
+}
+
+fn unauthorized(app: &App, ctx: &Ctx) -> Response {
+    let mut headers = headers(ctx);
+    let challenge = format!(
+        "Bearer error=\"invalid_token\", resource_metadata=\"{}/.well-known/oauth-protected-resource\"",
+        app.cfg.mcp_url
+    );
+    if let Ok(value) = HeaderValue::from_str(&challenge) {
+        headers.insert(header::WWW_AUTHENTICATE, value);
+    }
+    http::respond(
+        401,
+        headers,
+        http::JSON_UTF8,
+        json!({ "error": "invalid_token", "error_description": "Invalid or expired token" })
+            .to_string(),
+    )
 }
 
 fn handle_get(app: &App, ctx: &Ctx) -> Response {
@@ -138,7 +175,7 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
                 "instructions": "TORO Server AI Gateway provides tools to interact with TORO Server Wiki and server status.",
             }))
         }
-        "notifications/initialized" => http::no_content(headers(ctx)),
+        "notifications/initialized" => http::accepted(headers(ctx)),
         "tools/list" => reply(json!({ "tools": tools::definitions() })),
         "resources/list" => reply(json!({ "resources": [] })),
         "prompts/list" => reply(json!({ "prompts": [] })),
@@ -154,7 +191,7 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
             reply(tools::call(app, name, args, session.as_ref()).await)
         }
         "ping" => reply(json!({})),
-        _ if id.is_null() => http::no_content(headers(ctx)),
+        _ if id.is_null() => http::accepted(headers(ctx)),
         _ => {
             let body = json!({
                 "jsonrpc": "2.0",

@@ -57,7 +57,7 @@ impl Session {
     /// Wiki を変更してよいか。OAuth のトークンは、許可された scope (write か mcp) の中だけ
     pub fn can_write(&self) -> bool {
         let scope_allows = match self.claims.get("scope").and_then(Value::as_str) {
-            Some(scope) => scope.split_whitespace().any(|s| s == "write" || s == "mcp"),
+            Some(scope) => scope_allows_write(scope),
             None => true,
         };
         self.can_edit() && scope_allows
@@ -77,6 +77,11 @@ impl Session {
     fn str_claim(&self, name: &str) -> &str {
         self.claims.get(name).and_then(Value::as_str).unwrap_or("")
     }
+}
+
+/// scope が Wiki の変更を許しているか
+pub fn scope_allows_write(scope: &str) -> bool {
+    scope.split_whitespace().any(|s| s == "write" || s == "mcp")
 }
 
 /// 利用者の権限を表すトークンだけを通す。

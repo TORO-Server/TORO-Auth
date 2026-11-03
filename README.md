@@ -79,8 +79,9 @@ GitHub Actions が、試験に通ったものだけを GHCR に置きます (lin
 - ログインの `state` は署名し、Cookie と照合する
 - 認可コードは一度だけ。リフレッシュトークンや認可コードをアクセストークンとして使えない
 - 値はすべて HTML エスケープする。Wiki のパスはどの入口でも `..` を断る
-- `wiki_search` の結果はこのリポジトリの docs/ に絞る
+- `wiki_search` は GitHub のコード検索 (TORO-Wiki を索引していない) をやめ、原稿をメモリに持って自分で探す
 - `/api/auth/token` は POST だけ
+- MCP は、無効なトークンに 401 と `WWW-Authenticate` を返す (クライアントが再認可できるように)。通知への応答は 202、`DELETE` は 405
 - 稼働状態は外部の api.mcsrvstat.us でなく、Server List Ping で直接尋ねる
 - ロールは Bot トークンが無くても、利用者のトークン (guilds.members.read) で読む
 - mcp.torosaba.net の案内画面は、ログイン状態を表示しない (認証の管理は auth.torosaba.net)

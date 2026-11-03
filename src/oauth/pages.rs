@@ -1,6 +1,6 @@
 //! OAuth の HTML 画面
 
-use crate::auth::session::Session;
+use crate::auth::session::{Session, scope_allows_write};
 use crate::template::{insert_block, render};
 
 pub struct Consent<'a> {
@@ -14,13 +14,20 @@ pub struct Consent<'a> {
     pub deny_url: &'a str,
 }
 
+const WRITE_PERMISSION: &str =
+    "<li>[+] Wiki page editing and direct commit to repository (Member role required)</li>";
+const NO_WRITE_PERMISSION: &str = "<li>[-] Wiki page editing is not requested (read only)</li>";
+
 pub fn consent(options: &Consent) -> String {
+    let write_requested = scope_allows_write(options.scope);
     let section = match (options.session, options.approve_url) {
         (Some(session), Some(approve_url)) => {
-            let (color, label) = if session.can_edit() {
+            let (color, label) = if !session.can_edit() {
+                ("#ffff00", "[GUEST] (READ ONLY)")
+            } else if write_requested {
                 ("#00ff00", "[TORO MEMBER] (WIKI WRITE ENABLED)")
             } else {
-                ("#ffff00", "[GUEST] (READ ONLY)")
+                ("#00ff00", "[TORO MEMBER] (READ ONLY FOR THIS CLIENT)")
             };
             render(
                 include_str!("../../assets/oauth/consent_session.html"),
@@ -48,6 +55,15 @@ pub fn consent(options: &Consent) -> String {
             ("REDIRECT_TARGET", options.redirect_target),
             ("SCOPE", options.scope),
         ],
+    );
+    let page = insert_block(
+        &page,
+        "WRITE_PERMISSION",
+        if write_requested {
+            WRITE_PERMISSION
+        } else {
+            NO_WRITE_PERMISSION
+        },
     );
     insert_block(&page, "USER_SECTION", &section)
 }
