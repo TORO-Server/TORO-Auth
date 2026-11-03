@@ -7,6 +7,7 @@
 }
 
 :root {
+  --map-fallback: #1f7a2e;
   --text: #ffffff;
   --muted: #c8c8c8;
   --accent: #ffe860;
@@ -21,17 +22,13 @@
 }
 
 html {
-  background: #1f7a2e;
+  background: var(--map-fallback);
 }
 
 body {
   min-height: 100vh;
   padding: 24px 16px;
   color: var(--text);
-  background-color: #2a8c38;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%232a8c38'/%3E%3Cpath fill='%231f7a2e' d='M2 3h1v2H2zM3 4h1v1H3zM10 1h1v2h-1zM11 2h1v1h-1zM6 9h1v2H6zM7 10h1v1H7zM13 11h1v2h-1zM14 12h1v1h-1z'/%3E%3Cpath fill='%2348b050' d='M5 5h1v1H5zM12 6h1v1h-1zM2 12h1v1H2zM9 13h1v1H9z'/%3E%3C/svg%3E");
-  background-size: 48px 48px;
-  image-rendering: pixelated;
   font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
   font-size: 16px;
   line-height: 1.75;
@@ -333,4 +330,74 @@ footer {
   .message::after {
     animation: none !important;
   }
+}
+
+/* Dynmap の背景: 本物の地図のタイル (スポーン周辺) を敷き詰める。読めなければ単色のまま */
+.map-bg {
+  --tile: 20vmax;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--map-fallback);
+  background-image:
+    url("https://map.torosaba.net/tiles/main/flat/-2_2/zzzz_-48_80.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_2/zzzz_-32_80.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_2/zzzz_-16_80.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_2/zzzz_0_80.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_2/zzzz_16_80.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-2_2/zzzz_-48_64.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_2/zzzz_-32_64.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_2/zzzz_-16_64.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_2/zzzz_0_64.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_2/zzzz_16_64.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-2_1/zzzz_-48_48.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_1/zzzz_-32_48.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_1/zzzz_-16_48.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_1/zzzz_0_48.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_1/zzzz_16_48.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-2_1/zzzz_-48_32.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_1/zzzz_-32_32.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_1/zzzz_-16_32.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_1/zzzz_0_32.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_1/zzzz_16_32.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-2_0/zzzz_-48_16.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_0/zzzz_-32_16.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/-1_0/zzzz_-16_16.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_0/zzzz_0_16.webp"),
+    url("https://map.torosaba.net/tiles/main/flat/0_0/zzzz_16_16.webp");
+  background-position:
+    calc(var(--tile) * 0) calc(var(--tile) * 0),
+    calc(var(--tile) * 1) calc(var(--tile) * 0),
+    calc(var(--tile) * 2) calc(var(--tile) * 0),
+    calc(var(--tile) * 3) calc(var(--tile) * 0),
+    calc(var(--tile) * 4) calc(var(--tile) * 0),
+    calc(var(--tile) * 0) calc(var(--tile) * 1),
+    calc(var(--tile) * 1) calc(var(--tile) * 1),
+    calc(var(--tile) * 2) calc(var(--tile) * 1),
+    calc(var(--tile) * 3) calc(var(--tile) * 1),
+    calc(var(--tile) * 4) calc(var(--tile) * 1),
+    calc(var(--tile) * 0) calc(var(--tile) * 2),
+    calc(var(--tile) * 1) calc(var(--tile) * 2),
+    calc(var(--tile) * 2) calc(var(--tile) * 2),
+    calc(var(--tile) * 3) calc(var(--tile) * 2),
+    calc(var(--tile) * 4) calc(var(--tile) * 2),
+    calc(var(--tile) * 0) calc(var(--tile) * 3),
+    calc(var(--tile) * 1) calc(var(--tile) * 3),
+    calc(var(--tile) * 2) calc(var(--tile) * 3),
+    calc(var(--tile) * 3) calc(var(--tile) * 3),
+    calc(var(--tile) * 4) calc(var(--tile) * 3),
+    calc(var(--tile) * 0) calc(var(--tile) * 4),
+    calc(var(--tile) * 1) calc(var(--tile) * 4),
+    calc(var(--tile) * 2) calc(var(--tile) * 4),
+    calc(var(--tile) * 3) calc(var(--tile) * 4),
+    calc(var(--tile) * 4) calc(var(--tile) * 4);
+  background-size: var(--tile) var(--tile);
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+.map-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.12);
 }

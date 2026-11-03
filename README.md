@@ -32,8 +32,10 @@ Cloudflare Workers の toro-auth の置き換えで、公開している URL と
 
 | ホスト | 雰囲気 | スタイル |
 | --- | --- | --- |
-| mcp.torosaba.net | 草原の上に、黒地に白い角丸枠の窓とコマンド。文字が 1 字ずつ流れる窓 | `assets/mcp/theme.css` |
-| auth.torosaba.net | 青いグラデーションの窓と銀の枠、指のカーソル、ステータスの画面 | `assets/auth/theme.css` |
+| mcp.torosaba.net | Dynmap の平面の地図の上に、黒地に白い角丸枠の窓とコマンド。文字が 1 字ずつ流れる窓 | `assets/mcp/theme.css` |
+| auth.torosaba.net | 夜の色に沈めた Dynmap の立体の地図の上に、青いグラデーションの窓と銀の枠、指のカーソル | `assets/auth/theme.css` |
+
+背景は map.torosaba.net の本物のタイルです。地図が更新されれば背景も変わり、読めないときは単色になります。
 
 16 ビット時代の RPG の画面の文法を、自作の CSS とドット絵だけで作っています。既存の作品の名前、用語、素材は使いません。
 

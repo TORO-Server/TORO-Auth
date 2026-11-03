@@ -7,6 +7,7 @@
 }
 
 :root {
+  --map-fallback: #04062e;
   --win-top: #3c50dc;
   --win-mid: #1e2ca4;
   --win-bottom: #0a1062;
@@ -27,14 +28,13 @@
 }
 
 html {
-  background: #000;
+  background: var(--map-fallback);
 }
 
 body {
   min-height: 100vh;
   padding: 16px;
   color: var(--text);
-  background: #000;
   font-family: "TORO Pixel", "MS Gothic", "Osaka-Mono", monospace;
   font-size: 16px;
   line-height: 1.6;
@@ -308,4 +308,74 @@ footer {
   .cmd li > ::before {
     animation: none !important;
   }
+}
+
+/* Dynmap の背景: 本物の地図のタイル (スポーン周辺) を敷き詰める。読めなければ単色のまま */
+.map-bg {
+  --tile: 20vmax;
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--map-fallback);
+  background-image:
+    url("https://map.torosaba.net/tiles/main/t/3_5/zzzzz_96_160.webp"),
+    url("https://map.torosaba.net/tiles/main/t/4_5/zzzzz_128_160.webp"),
+    url("https://map.torosaba.net/tiles/main/t/5_5/zzzzz_160_160.webp"),
+    url("https://map.torosaba.net/tiles/main/t/6_5/zzzzz_192_160.webp"),
+    url("https://map.torosaba.net/tiles/main/t/7_5/zzzzz_224_160.webp"),
+    url("https://map.torosaba.net/tiles/main/t/3_4/zzzzz_96_128.webp"),
+    url("https://map.torosaba.net/tiles/main/t/4_4/zzzzz_128_128.webp"),
+    url("https://map.torosaba.net/tiles/main/t/5_4/zzzzz_160_128.webp"),
+    url("https://map.torosaba.net/tiles/main/t/6_4/zzzzz_192_128.webp"),
+    url("https://map.torosaba.net/tiles/main/t/7_4/zzzzz_224_128.webp"),
+    url("https://map.torosaba.net/tiles/main/t/3_3/zzzzz_96_96.webp"),
+    url("https://map.torosaba.net/tiles/main/t/4_3/zzzzz_128_96.webp"),
+    url("https://map.torosaba.net/tiles/main/t/5_3/zzzzz_160_96.webp"),
+    url("https://map.torosaba.net/tiles/main/t/6_3/zzzzz_192_96.webp"),
+    url("https://map.torosaba.net/tiles/main/t/7_3/zzzzz_224_96.webp"),
+    url("https://map.torosaba.net/tiles/main/t/3_2/zzzzz_96_64.webp"),
+    url("https://map.torosaba.net/tiles/main/t/4_2/zzzzz_128_64.webp"),
+    url("https://map.torosaba.net/tiles/main/t/5_2/zzzzz_160_64.webp"),
+    url("https://map.torosaba.net/tiles/main/t/6_2/zzzzz_192_64.webp"),
+    url("https://map.torosaba.net/tiles/main/t/7_2/zzzzz_224_64.webp"),
+    url("https://map.torosaba.net/tiles/main/t/3_1/zzzzz_96_32.webp"),
+    url("https://map.torosaba.net/tiles/main/t/4_1/zzzzz_128_32.webp"),
+    url("https://map.torosaba.net/tiles/main/t/5_1/zzzzz_160_32.webp"),
+    url("https://map.torosaba.net/tiles/main/t/6_1/zzzzz_192_32.webp"),
+    url("https://map.torosaba.net/tiles/main/t/7_1/zzzzz_224_32.webp");
+  background-position:
+    calc(var(--tile) * 0) calc(var(--tile) * 0),
+    calc(var(--tile) * 1) calc(var(--tile) * 0),
+    calc(var(--tile) * 2) calc(var(--tile) * 0),
+    calc(var(--tile) * 3) calc(var(--tile) * 0),
+    calc(var(--tile) * 4) calc(var(--tile) * 0),
+    calc(var(--tile) * 0) calc(var(--tile) * 1),
+    calc(var(--tile) * 1) calc(var(--tile) * 1),
+    calc(var(--tile) * 2) calc(var(--tile) * 1),
+    calc(var(--tile) * 3) calc(var(--tile) * 1),
+    calc(var(--tile) * 4) calc(var(--tile) * 1),
+    calc(var(--tile) * 0) calc(var(--tile) * 2),
+    calc(var(--tile) * 1) calc(var(--tile) * 2),
+    calc(var(--tile) * 2) calc(var(--tile) * 2),
+    calc(var(--tile) * 3) calc(var(--tile) * 2),
+    calc(var(--tile) * 4) calc(var(--tile) * 2),
+    calc(var(--tile) * 0) calc(var(--tile) * 3),
+    calc(var(--tile) * 1) calc(var(--tile) * 3),
+    calc(var(--tile) * 2) calc(var(--tile) * 3),
+    calc(var(--tile) * 3) calc(var(--tile) * 3),
+    calc(var(--tile) * 4) calc(var(--tile) * 3),
+    calc(var(--tile) * 0) calc(var(--tile) * 4),
+    calc(var(--tile) * 1) calc(var(--tile) * 4),
+    calc(var(--tile) * 2) calc(var(--tile) * 4),
+    calc(var(--tile) * 3) calc(var(--tile) * 4),
+    calc(var(--tile) * 4) calc(var(--tile) * 4);
+  background-size: var(--tile) var(--tile);
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+}
+.map-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(4, 6, 48, 0.62), rgba(4, 6, 48, 0.82));
 }
