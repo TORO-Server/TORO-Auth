@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TORO SERVER - AI INTEGRATION CONSENT</title>
+  <style>
+    body {
+      background: #000000;
+      color: #00ff00;
+      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .term-box {
+      background: #080808;
+      border: 3px double #00ff00;
+      max-width: 500px;
+      width: 100%;
+      padding: 20px;
+      text-align: center;
+    }
+    .term-header {
+      background: #00ff00;
+      color: #000000;
+      font-weight: bold;
+      padding: 4px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .client-tag {
+      color: #00ffff;
+      font-weight: bold;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+    .permissions {
+      text-align: left;
+      background: #001100;
+      border: 1px dashed #00aa00;
+      padding: 10px 14px;
+      margin: 14px 0;
+      font-size: 12px;
+      list-style-type: none;
+    }
+    .permissions li {
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="term-box">
+    <div class="term-header">*** TORO SERVER AI GATEWAY - AUTHORIZATION REQUEST ***</div>
+    <div class="client-tag">&gt;&gt; REQUESTING CLIENT: {{CLIENT_NAME}}</div>
+    <div style="color:#ffff00; font-size:12px; margin-bottom:10px; word-break:break-all;">&gt;&gt; REDIRECT TARGET: {{REDIRECT_TARGET}}</div>
+    <p style="color:#00ff00; font-size:12px; text-align:left;">
+      The AI Client is requesting access to the TORO Server Remote MCP endpoint.
+    </p>
+
+    <ul class="permissions">
+      <li>[+] Wiki documentation read and keyword query search</li>
+      <li>[+] Wiki page editing and direct commit to repository (Member role required)</li>
+      <li>[+] Real-time Minecraft server status and telemetry queries</li>
+    </ul>
+
+    {{USER_SECTION}}
+
+    <div style="margin-top:16px; border-top:1px dashed #005500; padding-top:10px;">
+      <a href="https://mcp.torosaba.net/" target="_top" style="color:#008800; font-size:12px; text-decoration:none;">
+        [ ABORT TO MCP CONSOLE ]
+      </a>
+    </div>
+  </div>
+</body>
+</html>

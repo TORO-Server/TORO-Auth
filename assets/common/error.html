@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TORO SERVER - SYSTEM ERROR [{{STATUS}}]</title>
+  <style>
+    body {
+      background: #000000;
+      color: #ff3333;
+      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 0;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .term-box {
+      background: #080808;
+      border: 3px double #ff3333;
+      max-width: 500px;
+      width: 100%;
+      padding: 20px;
+      text-align: center;
+    }
+    .term-header {
+      background: #ff3333;
+      color: #000000;
+      font-weight: bold;
+      padding: 4px;
+      margin-bottom: 14px;
+    }
+    .err-msg {
+      color: #ffffff;
+      background: #1a0000;
+      border: 1px dashed #ff3333;
+      padding: 10px;
+      margin: 14px 0;
+      word-break: break-all;
+      text-align: left;
+    }
+    .term-btn {
+      display: inline-block;
+      padding: 6px 14px;
+      background: #002200;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .term-btn:hover { background: #00ff00; color: #000; }
+  </style>
+</head>
+<body>
+  <div class="term-box">
+    <div class="term-header">*** [SYSTEM ERROR {{STATUS}}] EXCEPTION DETECTED ***</div>
+    <div class="err-msg">&gt; ERROR: {{MESSAGE}}</div>
+    <div style="margin-top:16px;">
+      <a href="https://mcp.torosaba.net/" class="term-btn">[ RETURN TO MCP CONSOLE ]</a>
+    </div>
+  </div>
+</body>
+</html>

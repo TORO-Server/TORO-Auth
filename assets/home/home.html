@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TORO SERVER COMMON AUTHENTICATION GATEWAY</title>
+  <link rel="icon" href="https://auth.torosaba.net/favicon.ico">
+  <style>
+    :root {
+      --term-black: #000000;
+      --term-dark: #080808;
+      --term-green: #00ff00;
+      --term-green-dim: #00aa00;
+      --term-cyan: #00ffff;
+      --term-yellow: #ffff00;
+      --term-white: #ffffff;
+      --term-magenta: #ff00ff;
+      --term-red: #ff3333;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: var(--term-black);
+      color: var(--term-green);
+      font-family: 'MS Gothic', 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      letter-spacing: 0.05em;
+      padding: 16px;
+    }
+    .crt-screen {
+      max-width: 980px;
+      margin: 0 auto;
+      border: 3px double var(--term-green);
+      padding: 16px;
+      background: var(--term-dark);
+    }
+    .header-banner {
+      border: 1px solid var(--term-green-dim);
+      padding: 8px 12px;
+      margin-bottom: 16px;
+      background: #001100;
+    }
+    .header-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--term-white);
+      margin-bottom: 4px;
+    }
+    .header-sub {
+      font-size: 12px;
+      color: var(--term-cyan);
+    }
+    .panel-box {
+      border: 1px solid var(--term-green);
+      margin-bottom: 20px;
+      background: #000000;
+    }
+    .panel-title {
+      background: var(--term-green);
+      color: var(--term-black);
+      font-weight: bold;
+      padding: 3px 8px;
+      font-size: 13px;
+    }
+    .panel-title-cyan {
+      background: var(--term-cyan);
+      color: var(--term-black);
+      font-weight: bold;
+      padding: 3px 8px;
+      font-size: 13px;
+    }
+    .panel-body {
+      padding: 12px;
+    }
+    .term-btn {
+      display: inline-block;
+      background: #002200;
+      color: var(--term-green);
+      border: 1px solid var(--term-green);
+      padding: 5px 12px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: bold;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .term-btn:hover {
+      background: var(--term-green);
+      color: var(--term-black);
+    }
+    .term-btn-primary {
+      background: #003322;
+      border-color: var(--term-cyan);
+      color: var(--term-cyan);
+    }
+    .term-btn-primary:hover {
+      background: var(--term-cyan);
+      color: var(--term-black);
+    }
+    .term-btn-red {
+      background: #220000;
+      border-color: var(--term-red);
+      color: #ff9999;
+    }
+    .term-btn-red:hover {
+      background: var(--term-red);
+      color: #000000;
+    }
+    .term-green { color: var(--term-green); }
+    .term-cyan { color: var(--term-cyan); }
+    .term-yellow { color: var(--term-yellow); }
+    .term-white { color: var(--term-white); }
+    .term-magenta { color: var(--term-magenta); }
+
+    .retro-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+    .retro-table th, .retro-table td {
+      border: 1px solid var(--term-green-dim);
+      padding: 6px 10px;
+      text-align: left;
+    }
+    .retro-table th {
+      background: var(--term-green-dim);
+      color: var(--term-black);
+      font-weight: bold;
+    }
+    .retro-table tr:nth-child(even) {
+      background: #001400;
+    }
+    .method-tag {
+      font-weight: bold;
+      padding: 1px 6px;
+      font-size: 11px;
+    }
+    .method-get { background: #003322; color: #00ffff; border: 1px solid #00aaaa; }
+    .method-post { background: #003300; color: #00ff00; border: 1px solid #00aa00; }
+
+    .fkey-bar {
+      margin-top: 24px;
+      border-top: 2px solid var(--term-green);
+      padding-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+    .fkey-item {
+      background: #002200;
+      border: 1px solid var(--term-green-dim);
+      padding: 2px 8px;
+      color: var(--term-cyan);
+      text-decoration: none;
+    }
+    .fkey-item:hover {
+      background: var(--term-cyan);
+      color: var(--term-black);
+    }
+    .fkey-num {
+      color: var(--term-yellow);
+      font-weight: bold;
+    }
+    .footer-note {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 11px;
+      color: #008800;
+    }
+  </style>
+</head>
+<body>
+  <div class="crt-screen">
+    <!-- SYSTEM HEADER -->
+    <header class="header-banner">
+      <div class="header-title">*** TORO SERVER COMMON AUTHENTICATION GATEWAY ***</div>
+      <div class="header-sub">HOST: auth.torosaba.net | ZONE: torosaba.net | PROTOCOL: OAUTH 2.1 + OIDC | STATUS: 200 OK</div>
+    </header>
+
+    <!-- AUTH STATUS -->
+    {{USER_BLOCK}}
+
+    <!-- MCP CONNECTOR PORTAL CARD -->
+    <div class="panel-box">
+      <div class="panel-title-cyan">[ AI CLIENT MCP CONNECTOR &amp; MANUAL ]</div>
+      <div class="panel-body">
+        <p>&gt; Dedicated Remote MCP Endpoint is available on the dedicated subdomain:</p>
+        <div style="background:#001a00; border:1px dashed #00ff00; padding:10px; margin:10px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="font-size:15px; font-weight:bold; color:#00ffff;">https://mcp.torosaba.net/</div>
+          <a href="https://mcp.torosaba.net/" class="term-btn term-btn-primary">&gt;&gt; OPEN MCP MANUAL &amp; STATUS CONSOLE</a>
+        </div>
+        <p style="font-size:12px; color:#aaa;">&gt; Includes step-by-step setup guides with actual capture screens for Claude, ChatGPT, Gemini, and Desktop clients.</p>
+      </div>
+    </div>
+
+    <!-- API DIRECTORY TABLE -->
+    <div class="panel-box">
+      <div class="panel-title">[ AUTHENTICATION &amp; BACKEND API ENDPOINTS ]</div>
+      <div class="panel-body">
+        <table class="retro-table">
+          <thead>
+            <tr>
+              <th>METHOD</th>
+              <th>PATH</th>
+              <th>FUNCTION SUMMARY</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/api/auth/login</td>
+              <td>Initiate Discord OAuth2 SSO authentication flow</td>
+              <td><a href="/api/auth/login" class="term-btn" style="padding:1px 6px; font-size:11px;">EXEC</a></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/api/auth/me</td>
+              <td>Query active session identity and write permissions</td>
+              <td><a href="/api/auth/me" class="term-btn" style="padding:1px 6px; font-size:11px;">QUERY</a></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-post">POST</span></td>
+              <td class="term-cyan">/api/auth/token</td>
+              <td>Issue long-lived Bearer API token for AI connectors</td>
+              <td><span class="term-yellow">AUTH-REQ</span></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/api/auth/logout</td>
+              <td>Purge session cookies and terminate authentication</td>
+              <td><a href="/api/auth/logout" class="term-btn" style="padding:1px 6px; font-size:11px;">PURGE</a></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/oauth/authorize</td>
+              <td>RFC 6749 OAuth 2.0 PKCE client authorization endpoint</td>
+              <td><span class="term-white">GATEWAY</span></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-post">POST</span></td>
+              <td class="term-cyan">/oauth/token</td>
+              <td>Token exchange and refresh grant endpoint</td>
+              <td><span class="term-white">RFC-6749</span></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/api/docs/raw</td>
+              <td>Fetch markdown source text and SHA hash from GitHub</td>
+              <td><span class="term-white">REST</span></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-post">POST</span></td>
+              <td class="term-cyan">/api/docs/save</td>
+              <td>Commit modified markdown document directly to GitHub</td>
+              <td><span class="term-yellow">WRITE-REQ</span></td>
+            </tr>
+            <tr>
+              <td><span class="method-tag method-get">GET</span></td>
+              <td class="term-cyan">/api/openapi.json</td>
+              <td>OpenAPI 3.1 schema specification document</td>
+              <td><a href="/api/openapi.json" class="term-btn" style="padding:1px 6px; font-size:11px;">VIEW</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FUNCTION KEY BAR -->
+    <div class="fkey-bar">
+      <a href="https://wiki.torosaba.net/" class="fkey-item"><span class="fkey-num">[f.1]</span> WIKI</a>
+      <a href="https://mcp.torosaba.net/" class="fkey-item"><span class="fkey-num">[f.2]</span> MCP-GATEWAY</a>
+      <a href="/api/openapi.json" class="fkey-item"><span class="fkey-num">[f.3]</span> OPENAPI</a>
+      <a href="{{LOGIN_LINK}}" class="fkey-item"><span class="fkey-num">[f.4]</span> {{LOGIN_LABEL}}</a>
+      <a href="#" class="fkey-item"><span class="fkey-num">[f.5]</span> TOP</a>
+    </div>
+
+    <div class="footer-note">
+      TORO SERVER COMMON AUTHENTICATION (C) 2026. DOMAIN SCOPE: .torosaba.net
+    </div>
+  </div>
+
+  <script>
+    async function generateToken() {
+      try {
+        const res = await fetch('/api/auth/token', { method: 'POST' });
+        const data = await res.json();
+        if (data && data.token) {
+          document.getElementById('token-display').style.display = 'block';
+          document.getElementById('token-val').value = data.token;
+          alert('[SUCCESS] AI Connector Bearer Token generated.');
+        } else {
+          alert('[ERROR] ' + (data.error || 'Failed to generate token'));
+        }
+      } catch (e) {
+        alert('[ERROR] Network error: ' + e.message);
+      }
+    }
+  </script>
+</body>
+</html>
