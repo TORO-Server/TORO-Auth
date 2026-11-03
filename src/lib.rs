@@ -75,4 +75,12 @@ impl App {
             wiki_index: wiki::search::Index::new(wiki_index_ttl),
         })
     }
+
+    /// 一度きりのトークン (認可コードや consent) の jti を記録し、消費する。初出なら true
+    pub fn consume_jti(&self, jti: &str, exp: i64) -> bool {
+        let mut used = self.used_codes.lock().expect("used_codes lock");
+        let now = jwt::now();
+        used.retain(|_, until| *until >= now);
+        used.insert(jti.to_string(), exp).is_none()
+    }
 }

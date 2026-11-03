@@ -229,7 +229,13 @@ async fn token_endpoint_accepts_json_bodies() {
         .client
         .post(server.url("/oauth/token"))
         .json(
-            &json!({ "grant_type": "authorization_code", "code": code, "code_verifier": VERIFIER }),
+            &json!({
+                "grant_type": "authorization_code",
+                "code": code,
+                "code_verifier": VERIFIER,
+                "redirect_uri": CLIENT_REDIRECT,
+                "client_id": "toro-ai-1",
+            }),
         )
         .send()
         .await
@@ -309,6 +315,12 @@ async fn consent_is_bound_to_the_request_and_the_user() {
         server.get_with_cookie(&approve, &cookie).await.status(),
         302
     );
+
+    // 一度使った consent は再利用できない (ワンタイム性)
+    assert_eq!(
+        server.get_with_cookie(&approve, &cookie).await.status(),
+        200
+    );
 }
 
 #[tokio::test]
@@ -331,7 +343,12 @@ async fn pkce_is_enforced() {
 
     let without = token_request(
         &server,
-        &[("grant_type", "authorization_code"), ("code", &code)],
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("redirect_uri", CLIENT_REDIRECT),
+            ("client_id", "toro-ai-1"),
+        ],
     )
     .await;
     assert_eq!(without.status(), 400);
@@ -345,6 +362,8 @@ async fn pkce_is_enforced() {
         &[
             ("grant_type", "authorization_code"),
             ("code", &code),
+            ("redirect_uri", CLIENT_REDIRECT),
+            ("client_id", "toro-ai-1"),
             ("code_verifier", "x"),
         ],
     )
@@ -376,12 +395,28 @@ async fn code_must_match_redirect_uri_and_client() {
         "redirect_uri mismatch"
     );
 
+    // redirect_uri 省略時も拒絶されること (RFC 6749)
+    let res = token_request(
+        &server,
+        &[
+            ("grant_type", "authorization_code"),
+            ("code", &code),
+            ("code_verifier", VERIFIER),
+        ],
+    )
+    .await;
+    assert_eq!(
+        res.json::<Value>().await.unwrap()["error_description"],
+        "redirect_uri mismatch"
+    );
+
     let res = token_request(
         &server,
         &[
             ("grant_type", "authorization_code"),
             ("code", &code),
             ("client_id", "other"),
+            ("redirect_uri", CLIENT_REDIRECT),
             ("code_verifier", VERIFIER),
         ],
     )

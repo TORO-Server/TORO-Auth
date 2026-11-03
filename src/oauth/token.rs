@@ -88,7 +88,15 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     };
 
     let scope = claim(&claims, "scope").unwrap_or(DEFAULT_SCOPE).to_string();
+    if let Some(expected_client_id) = claim(&claims, "client_id") {
+        if let Some(client_id) = param(params, "client_id") {
+            if client_id != expected_client_id {
+                return oauth_error(ctx, "invalid_grant", "client_id mismatch");
+            }
+        }
+    }
     let now = jwt::now();
+    claims.insert("iss".into(), json!(app.cfg.issuer));
     claims.insert("type".into(), json!(ACCESS_TOKEN_TYPE));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(now + ACCESS_TOKEN_LIFETIME));
@@ -121,10 +129,7 @@ fn pkce_ok(code: &Claims, verifier: Option<&str>) -> bool {
 
 /// 認可コードは一度だけ。初めてなら true
 fn consume_code(app: &App, jti: &str, exp: i64) -> bool {
-    let mut used = app.used_codes.lock().expect("used_codes lock");
-    let now = jwt::now();
-    used.retain(|_, until| *until >= now);
-    used.insert(jti.to_string(), exp).is_none()
+    app.consume_jti(jti, exp)
 }
 
 fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
@@ -144,14 +149,12 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
         return invalid_code();
     };
 
-    if let Some(uri) = param(params, "redirect_uri")
-        && claim(&payload, "redirect_uri") != Some(uri)
-    {
+    let payload_redirect_uri = claim(&payload, "redirect_uri");
+    if payload_redirect_uri.is_some() && param(params, "redirect_uri") != payload_redirect_uri {
         return oauth_error(ctx, "invalid_grant", "redirect_uri mismatch");
     }
-    if let Some(client_id) = param(params, "client_id")
-        && claim(&payload, "client_id") != Some(client_id)
-    {
+    let payload_client_id = claim(&payload, "client_id");
+    if payload_client_id.is_some() && param(params, "client_id") != payload_client_id {
         return oauth_error(ctx, "invalid_grant", "client_id mismatch");
     }
     if !pkce_ok(&payload, param(params, "code_verifier")) {

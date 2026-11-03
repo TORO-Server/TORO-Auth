@@ -176,16 +176,37 @@ pub fn cookie(header_value: &str, name: &str) -> Option<String> {
 }
 
 fn percent_decode(value: &str) -> String {
-    url::form_urlencoded::parse(value.replace('+', "%2B").as_bytes())
-        .next()
-        .map(|(k, v)| {
-            if v.is_empty() {
-                k.into_owned()
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut chars = value.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let h1 = chars.next();
+            let h2 = chars.next();
+            if let (Some(h1), Some(h2)) = (h1, h2) {
+                let hex_val = |b: u8| match b {
+                    b'0'..=b'9' => Some(b - b'0'),
+                    b'a'..=b'f' => Some(b - b'a' + 10),
+                    b'A'..=b'F' => Some(b - b'A' + 10),
+                    _ => None,
+                };
+                if let (Some(d1), Some(d2)) = (hex_val(h1), hex_val(h2)) {
+                    bytes.push((d1 << 4) | d2);
+                    continue;
+                }
+                bytes.push(b'%');
+                bytes.push(h1);
+                bytes.push(h2);
             } else {
-                format!("{k}={v}")
+                bytes.push(b'%');
+                if let Some(h1) = h1 {
+                    bytes.push(h1);
+                }
             }
-        })
-        .unwrap_or_default()
+        } else {
+            bytes.push(b);
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn legacy_cookie_removals() -> impl Iterator<Item = String> {
@@ -216,9 +237,10 @@ mod tests {
 
     #[test]
     fn finds_cookie_by_exact_name() {
-        let header = "a=1; toro_session=abc.def-_; other=x%3Dy";
+        let header = "a=1; toro_session=abc.def-_; other=x%3Dy; with_amp=foo%26bar";
         assert_eq!(cookie(header, "toro_session").as_deref(), Some("abc.def-_"));
         assert_eq!(cookie(header, "other").as_deref(), Some("x=y"));
+        assert_eq!(cookie(header, "with_amp").as_deref(), Some("foo&bar"));
         assert_eq!(cookie(header, "session"), None);
         assert_eq!(cookie("toro_session=", "toro_session"), None);
     }

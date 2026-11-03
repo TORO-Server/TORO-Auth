@@ -72,9 +72,19 @@ fn consent_is_valid(app: &App, ctx: &Ctx, session: &Session) -> bool {
         return false;
     };
     let text = |name: &str| claims.get(name).and_then(Value::as_str);
-    text("type") == Some(CONSENT_TYPE)
-        && text("sub") == Some(session.id())
-        && text("request") == Some(request_fingerprint(ctx).as_str())
+    if text("type") != Some(CONSENT_TYPE)
+        || text("sub") != Some(session.id())
+        || text("request") != Some(request_fingerprint(ctx).as_str())
+    {
+        return false;
+    }
+    let (Some(jti), Some(exp)) = (
+        claims.get("jti").and_then(Value::as_str),
+        claims.get("exp").and_then(Value::as_i64),
+    ) else {
+        return false;
+    };
+    app.consume_jti(jti, exp)
 }
 
 fn issue_code(
@@ -190,6 +200,7 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
                 "type": CONSENT_TYPE,
                 "sub": session.id(),
                 "request": request_fingerprint(ctx),
+                "jti": random_hex(16),
                 "exp": jwt::now() + CONSENT_LIFETIME,
             }),
             &app.cfg.jwt_secret,
