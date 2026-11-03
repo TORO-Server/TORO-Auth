@@ -141,22 +141,13 @@ fn sse(app: &App) -> Response {
     res
 }
 
-/// 先頭は本体を埋め込んだ data: URI。Gemini は CSP で外部の画像を読めず、先頭の icons を使うので、URL では表示できない
-fn server_icons(mcp_url: &str) -> Value {
-    let embedded = STANDARD.encode(include_bytes!("../../assets/icons/icon-64.png"));
+/// 本体を埋め込んだ data: URI だけを伝える。
+/// Gemini は CSP で外部の画像を読めないのに、URL があれば大きい方を選んで壊れた画像を出す
+fn server_icons() -> Value {
+    let embedded = STANDARD.encode(include_bytes!("../../assets/icons/icon-192.png"));
     json!([
         {
             "src": format!("data:image/png;base64,{embedded}"),
-            "mimeType": "image/png",
-            "sizes": ["64x64"],
-        },
-        {
-            "src": format!("{mcp_url}/icon-512.png"),
-            "mimeType": "image/png",
-            "sizes": ["512x512"],
-        },
-        {
-            "src": format!("{mcp_url}/icon-192.png"),
             "mimeType": "image/png",
             "sizes": ["192x192"],
         },
@@ -195,7 +186,7 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
                     "title": SERVER_NAME,
                     "version": SERVER_VERSION,
                     "websiteUrl": app.cfg.wiki_url,
-                    "icons": server_icons(&app.cfg.mcp_url),
+                    "icons": server_icons(),
                 },
                 "instructions": "TORO Server provides tools to interact with the TORO Server Wiki and server status.",
             }))

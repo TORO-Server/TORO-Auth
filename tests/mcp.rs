@@ -34,18 +34,16 @@ async fn initialize_echoes_the_protocol_version() {
     assert_eq!(info["name"], "TORO Server");
     assert_eq!(info["title"], "TORO Server");
     assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
-    // 外部の画像を読めないクライアントのために、先頭は本体を埋め込む
+    // 外部の画像を読めないクライアントがあるので、本体を埋め込んだものだけを伝える
+    let icons = info["icons"].as_array().unwrap();
+    assert_eq!(icons.len(), 1);
     assert!(
-        info["icons"][0]["src"]
+        icons[0]["src"]
             .as_str()
             .unwrap()
             .starts_with("data:image/png;base64,iVBOR")
     );
-    assert_eq!(info["icons"][0]["mimeType"], "image/png");
-    assert_eq!(
-        info["icons"][1]["src"],
-        "https://mcp.torosaba.net/icon-512.png"
-    );
+    assert_eq!(icons[0]["mimeType"], "image/png");
     assert_eq!(
         body["result"]["capabilities"]["tools"]["listChanged"],
         false
