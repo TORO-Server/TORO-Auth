@@ -3,11 +3,13 @@
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
+    /// api / mcp からのトークンの確認を受ける内側のポート (公開しない)
+    pub internal_port: u16,
     /// 認可サーバーの公開 URL (末尾の / なし)
     pub issuer: String,
-    /// REST API の公開 URL (末尾の / なし)
+    /// REST API の公開 URL (末尾の / なし)。以前の URL の転送先にだけ使う
     pub api_url: String,
-    /// MCP サーバーの公開 URL (末尾の / なし)
+    /// MCP サーバーの公開 URL (末尾の / なし)。以前の URL の転送先にだけ使う
     pub mcp_url: String,
     /// Wiki の公開 URL (末尾の / なし)
     pub wiki_url: String,
@@ -23,19 +25,6 @@ pub struct Config {
     pub discord_required_role_id: Option<String>,
     pub discord_bot_token: Option<String>,
     pub discord_api: String,
-
-    pub github_token: String,
-    pub github_owner: String,
-    pub github_repo: String,
-    pub github_branch: String,
-    pub github_api: String,
-    /// Wiki の検索が、原稿の変更を見に行く間隔
-    pub wiki_index_ttl_secs: u64,
-
-    /// 稼働状態を尋ねる先 (host:port)
-    pub mc_status_addr: String,
-    /// 尋ねるときに名乗るホスト名 (Velocity の forced-hosts 用)
-    pub mc_status_host: String,
 
     /// 再起動しても残す記録の置き場所 (90 日トークンの世代)
     pub state_dir: String,
@@ -69,7 +58,6 @@ impl Config {
         };
         let jwt_secret = required("JWT_SECRET");
         let discord_client_secret = required("DISCORD_CLIENT_SECRET");
-        let github_token = required("GITHUB_TOKEN");
         if !missing.is_empty() {
             return Err(format!(
                 "missing environment variables: {}",
@@ -85,6 +73,9 @@ impl Config {
             port: or_default("PORT", "8080")
                 .parse()
                 .map_err(|_| "PORT must be a number".to_string())?,
+            internal_port: or_default("INTERNAL_PORT", "8081")
+                .parse()
+                .map_err(|_| "INTERNAL_PORT must be a number".to_string())?,
             discord_redirect_uri: or_default(
                 "DISCORD_REDIRECT_URI",
                 &format!("{issuer}/api/auth/callback"),
@@ -105,14 +96,6 @@ impl Config {
             discord_required_role_id: optional("DISCORD_REQUIRED_ROLE_ID"),
             discord_bot_token: optional("DISCORD_BOT_TOKEN"),
             discord_api: trimmed("DISCORD_API", "https://discord.com/api/v10"),
-            github_token,
-            github_owner: or_default("GITHUB_OWNER", "TORO-Server"),
-            github_repo: or_default("GITHUB_REPO", "TORO-Wiki"),
-            github_branch: or_default("GITHUB_BRANCH", "main"),
-            github_api: trimmed("GITHUB_API", "https://api.github.com"),
-            wiki_index_ttl_secs: 300,
-            mc_status_addr: or_default("MC_STATUS_ADDR", "toro-velocity:25565"),
-            mc_status_host: or_default("MC_STATUS_HOST", "torosaba.net"),
             state_dir: or_default("STATE_DIR", "/data"),
         })
     }

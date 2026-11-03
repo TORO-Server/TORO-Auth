@@ -1,16 +1,13 @@
 //! 結合試験の共通部品: 偽の Discord / GitHub と、試験用に起動した本体
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::Router;
 use axum::body::to_bytes;
 use axum::extract::Request;
-use axum::http::{Method, StatusCode, header};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
 use serde_json::{Value, json};
 use toro_auth::App;
 use toro_auth::config::Config;
@@ -100,106 +97,11 @@ async fn start_fake_discord() -> String {
     spawn(router).await
 }
 
-/// 原稿を覚えておくだけの GitHub
-#[derive(Default)]
-pub struct FakeGitHub {
-    /// エンコードされたままのパス → (sha, 本文)
-    pub files: Mutex<HashMap<String, (String, String)>>,
-    pub commits: Mutex<Vec<Value>>,
-    pub requests: Mutex<Vec<String>>,
-    /// ツリーに載せる原稿: パス → (sha, 本文)
-    pub docs: Mutex<BTreeMap<String, (String, String)>>,
-}
-
-impl FakeGitHub {
-    pub fn blob_requests(&self) -> usize {
-        self.requests
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|uri| uri.contains("/git/blobs/"))
-            .count()
-    }
-}
-
-async fn start_fake_github(state: Arc<FakeGitHub>) -> String {
-    let router = Router::new().fallback(move |req: Request| {
-        let state = state.clone();
-        async move {
-            let (parts, body) = req.into_parts();
-            let body = to_bytes(body, usize::MAX).await.unwrap();
-            let path = parts.uri.path().to_string();
-            state.requests.lock().unwrap().push(parts.uri.to_string());
-
-            if path.ends_with("/git/trees/main") {
-                let mut tree: Vec<Value> = state
-                    .docs
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .map(|(path, (sha, _))| json!({ "path": path, "type": "blob", "sha": sha }))
-                    .collect();
-                tree.push(json!({ "path": "docs/image.png", "type": "blob", "sha": "png" }));
-                tree.push(json!({ "path": "docs/01_About", "type": "tree", "sha": "dir" }));
-                tree.push(json!({ "path": "README.md", "type": "blob", "sha": "readme" }));
-                return json_response(200, json!({ "tree": tree }));
-            }
-            if let Some(sha) = path.split("/git/blobs/").nth(1) {
-                let docs = state.docs.lock().unwrap();
-                return match docs.values().find(|(s, _)| s == sha) {
-                    Some((_, content)) => json_response(
-                        200,
-                        json!({ "sha": sha, "encoding": "base64", "content": STANDARD.encode(content) }),
-                    ),
-                    None => json_response(404, json!({ "message": "Not Found" })),
-                };
-            }
-            let Some(file_path) = path.strip_prefix("/repos/TORO-Server/TORO-Wiki/contents/") else {
-                return json_response(404, json!({ "message": "Not Found" }));
-            };
-            let file_path = file_path.to_string();
-            if parts.method == Method::GET {
-                let files = state.files.lock().unwrap();
-                return match files.get(&file_path) {
-                    Some((sha, content)) => {
-                        // 本物と同じく、60 文字ごとに改行が入った base64
-                        let encoded = STANDARD.encode(content);
-                        let wrapped: Vec<String> =
-                            encoded.as_bytes().chunks(60).map(|c| String::from_utf8_lossy(c).into_owned()).collect();
-                        json_response(
-                            200,
-                            json!({ "path": file_path, "sha": sha, "size": content.len(), "content": wrapped.join("\n") }),
-                        )
-                    }
-                    None => json_response(404, json!({ "message": "Not Found" })),
-                };
-            }
-
-            let payload: Value = serde_json::from_slice(&body).unwrap();
-            let mut files = state.files.lock().unwrap();
-            if let Some((sha, _)) = files.get(&file_path)
-                && payload["sha"].as_str() != Some(sha) {
-                    return json_response(409, json!({ "message": format!("{file_path} does not match {sha}") }));
-                }
-            let new_sha = format!("sha-{}", state.commits.lock().unwrap().len() + 1);
-            let content = String::from_utf8(STANDARD.decode(payload["content"].as_str().unwrap()).unwrap()).unwrap();
-            files.insert(file_path, (new_sha.clone(), content));
-            state.commits.lock().unwrap().push(payload);
-            json_response(200, json!({ "commit": { "sha": "commit-1" }, "content": { "sha": new_sha } }))
-        }
-    });
-    spawn(router).await
-}
-
 pub struct TestServer {
     pub base: String,
-    /// auth として話す
+    /// api / mcp のトークンの確認を受ける内側のポート
+    pub internal: String,
     pub client: reqwest::Client,
-    /// api.torosaba.net として話す
-    pub api_client: reqwest::Client,
-    /// mcp.torosaba.net として話す
-    pub mcp_client: reqwest::Client,
-    pub github: Arc<FakeGitHub>,
 }
 
 pub async fn start() -> TestServer {
@@ -209,23 +111,8 @@ pub async fn start() -> TestServer {
 pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
-    let github = Arc::new(FakeGitHub::default());
-    github.docs.lock().unwrap().extend([
-        (
-            "docs/01_About/a.md".to_string(),
-            (
-                "sha-a".to_string(),
-                "# 概要`nTrainCarts と 電車 の話".to_string(),
-            ),
-        ),
-        (
-            "docs/02_Guide/b.md".to_string(),
-            (
-                "sha-b".to_string(),
-                "# ガイド`nmarumasign の使い方".to_string(),
-            ),
-        ),
-    ]);
+    let internal_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let internal = format!("http://{}", internal_listener.local_addr().unwrap());
 
     let state_dir =
         std::env::temp_dir().join(format!("toro-auth-test-{}", toro_auth::util::random_hex(8)));
@@ -233,6 +120,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
 
     let mut cfg = Config {
         port: 0,
+        internal_port: 0,
         issuer: base.clone(),
         api_url: "https://api.torosaba.net".into(),
         mcp_url: "https://mcp.torosaba.net".into(),
@@ -246,45 +134,29 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         discord_required_role_id: None,
         discord_bot_token: None,
         discord_api: start_fake_discord().await,
-        github_token: "gh-token".into(),
-        github_owner: "TORO-Server".into(),
-        github_repo: "TORO-Wiki".into(),
-        github_branch: "main".into(),
-        github_api: start_fake_github(github.clone()).await,
-        wiki_index_ttl_secs: 300,
-        // 誰も待っていないポート
-        mc_status_addr: "127.0.0.1:9".into(),
-        mc_status_host: "torosaba.net".into(),
         state_dir: state_dir.to_string_lossy().into_owned(),
     };
     customize(&mut cfg);
 
-    let router = toro_auth::routes::router(Arc::new(App::new(cfg).unwrap()));
+    let app = Arc::new(App::new(cfg).unwrap());
+    let router = toro_auth::routes::router(app.clone());
     tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-
-    let client_for = |host: Option<&'static str>| {
-        let mut headers = reqwest::header::HeaderMap::new();
-        if let Some(host) = host {
-            headers.insert(
-                reqwest::header::HOST,
-                reqwest::header::HeaderValue::from_static(host),
-            );
-        }
-        reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .default_headers(headers)
-            .build()
+    let internal_router = toro_auth::internal::router(app);
+    tokio::spawn(async move {
+        axum::serve(internal_listener, internal_router)
+            .await
             .unwrap()
-    };
+    });
+
     TestServer {
         base,
-        client: client_for(None),
-        api_client: client_for(Some("api.torosaba.net")),
-        mcp_client: client_for(Some("mcp.torosaba.net")),
-        github,
+        internal,
+        client: reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap(),
     }
 }
-
 /// 応答ヘッダーを読みやすくする
 pub fn set_cookies(res: &reqwest::Response) -> Vec<String> {
     res.headers()
@@ -324,14 +196,6 @@ impl TestServer {
 
     pub async fn get(&self, path: &str) -> reqwest::Response {
         self.client.get(self.url(path)).send().await.unwrap()
-    }
-
-    pub async fn api_get(&self, path: &str) -> reqwest::Response {
-        self.api_client.get(self.url(path)).send().await.unwrap()
-    }
-
-    pub async fn mcp_get(&self, path: &str) -> reqwest::Response {
-        self.mcp_client.get(self.url(path)).send().await.unwrap()
     }
 
     /// Wiki の画面と同じように、Cookie を API 用の短いトークンに換える
@@ -388,45 +252,17 @@ impl TestServer {
         self.login_to(code, "https://wiki.torosaba.net/").await.0
     }
 
-    pub fn put_file(&self, encoded_path: &str, sha: &str, content: &str) {
-        self.github.files.lock().unwrap().insert(
-            encoded_path.to_string(),
-            (sha.to_string(), content.to_string()),
-        );
-    }
-
-    /// JSON-RPC を 1 回呼ぶ
-    pub async fn rpc(
-        &self,
-        method: &str,
-        params: Value,
-        bearer: Option<&str>,
-    ) -> reqwest::Response {
-        let mut request = self
-            .mcp_client
-            .post(self.url("/mcp"))
-            .json(&json!({ "jsonrpc": "2.0", "id": 7, "method": method, "params": params }));
-        if let Some(token) = bearer {
-            request = request.bearer_auth(token);
-        }
-        request.send().await.unwrap()
-    }
-
-    /// ツールを呼び、結果の本文と isError を返す
-    pub async fn tool(&self, name: &str, arguments: Value, bearer: Option<&str>) -> (String, bool) {
+    /// api / mcp と同じように、内側のポートでトークンを確かめる。通れば `claims`、通らなければ None
+    pub async fn introspect(&self, token: &str) -> Option<Value> {
         let res = self
-            .rpc(
-                "tools/call",
-                json!({ "name": name, "arguments": arguments }),
-                bearer,
-            )
-            .await;
+            .client
+            .post(format!("{}/introspect", self.internal))
+            .json(&json!({ "token": token }))
+            .send()
+            .await
+            .unwrap();
         assert_eq!(res.status(), 200);
         let body: Value = res.json().await.unwrap();
-        let result = &body["result"];
-        (
-            result["content"][0]["text"].as_str().unwrap().to_string(),
-            result["isError"] == true,
-        )
+        (body["active"] == true).then(|| body["claims"].clone())
     }
 }

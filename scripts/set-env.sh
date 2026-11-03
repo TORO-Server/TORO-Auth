@@ -30,16 +30,7 @@ ask_secret() {
   fi
 }
 
-echo "--- 1/3 GitHub トークン (TORO-Wiki の Contents: Read and write)"
-github=$(ask_secret "GITHUB_TOKEN" GITHUB_TOKEN)
-if [ -n "$github" ]; then
-  code=$(printf 'Authorization: Bearer %s\n' "$github" | curl -s -o /dev/null -w '%{http_code}' -H @- \
-    https://api.github.com/repos/TORO-Server/TORO-Wiki/contents/docs)
-  [ "$code" = 200 ] && echo "  OK: TORO-Wiki を読めました" || echo "  NG: GitHub の応答が $code です。トークンを確かめて、もう一度実行してください"
-fi
-
-echo
-echo "--- 2/3 Discord の Client Secret"
+echo "--- 1/2 Discord の Client Secret"
 echo "  Reset Secret を押すと、切り替えが終わるまで新規ログインができなくなります。"
 discord=$(ask_secret "DISCORD_CLIENT_SECRET" DISCORD_CLIENT_SECRET)
 if [ -n "$discord" ]; then
@@ -49,7 +40,7 @@ if [ -n "$discord" ]; then
 fi
 
 echo
-echo "--- 3/3 Wiki を編集できるロール"
+echo "--- 2/2 Wiki を編集できるロール"
 read -rp "DISCORD_REQUIRED_ROLE_ID (ギルドの全員のままなら空で Enter): " role
 role=${role//[[:space:]]/}
 if [ -n "$role" ]; then
