@@ -8,6 +8,8 @@
 //! - `from_cookie`: ブラウザでの読み取りと、同意の画面
 //! - `from_cookie_for_write`: ブラウザでの変更 (Origin を確かめる。CSRF 対策)
 //! - `from_request`: 自分の情報の確認のように、どちらも受け付けるもの
+//!
+//! トークンの種類の確認は `decode_access_token` の 1 か所で行う。
 
 use axum::http::header;
 use serde_json::{Map, Value};
@@ -20,6 +22,11 @@ use crate::util::encode_uri_component;
 /// OAuth で発行するアクセストークンの type。
 /// ブラウザのセッションと 90 日トークンには type が無い
 pub const ACCESS_TOKEN_TYPE: &str = "mcp_access_token";
+/// 90 日トークンの purpose。いまの世代のものだけが通る (`tokens`)
+pub const CONNECTOR_PURPOSE: &str = "ai_connector";
+/// 利用者のアイコンとして信じる置き場所
+const AVATAR_ORIGIN: &str = "https://cdn.discordapp.com/";
+const DEFAULT_AVATAR: &str = concat!("/_assets/favicon.svg?v=", env!("CARGO_PKG_VERSION"));
 
 pub const SESSION_COOKIE: &str = "__Host-toro_session";
 const SESSION_MAX_AGE: i64 = 30 * 86400;
@@ -74,6 +81,15 @@ impl Session {
         self.claims.get("avatar").and_then(Value::as_str)
     }
 
+    /// Discord のアイコンの URL。無ければ TORO のアイコン
+    pub fn avatar_url(&self) -> &str {
+        self.claims
+            .get("avatar_url")
+            .and_then(Value::as_str)
+            .filter(|url| url.starts_with(AVATAR_ORIGIN))
+            .unwrap_or(DEFAULT_AVATAR)
+    }
+
     fn str_claim(&self, name: &str) -> &str {
         self.claims.get(name).and_then(Value::as_str).unwrap_or("")
     }
@@ -88,10 +104,25 @@ pub fn scope_allows_write(scope: &str) -> bool {
 /// 同じ鍵で署名した認可コードやリフレッシュトークンを、アクセストークンとして使わせない
 pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
     let claims = jwt::verify(token, &app.cfg.jwt_secret)?;
+    if claims.get("purpose").and_then(Value::as_str) == Some(CONNECTOR_PURPOSE)
+        && !is_current_connector_token(app, &claims)
+    {
+        return None;
+    }
     match claims.get("type") {
         None => Some(claims),
         Some(kind) if kind == ACCESS_TOKEN_TYPE => Some(claims),
         Some(_) => None,
+    }
+}
+
+/// 再作成で置き換えられたトークンと、世代を持たない昔のトークンは通さない
+fn is_current_connector_token(app: &App, claims: &Claims) -> bool {
+    let id = claims.get("id").and_then(Value::as_str);
+    let generation = claims.get("generation").and_then(Value::as_str);
+    match (id, generation) {
+        (Some(id), Some(generation)) => app.tokens.is_current(id, generation),
+        _ => false,
     }
 }
 

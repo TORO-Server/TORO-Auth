@@ -36,6 +36,9 @@ pub struct Config {
     pub mc_status_addr: String,
     /// 尋ねるときに名乗るホスト名 (Velocity の forced-hosts 用)
     pub mc_status_host: String,
+
+    /// 再起動しても残す記録の置き場所 (90 日トークンの世代)
+    pub state_dir: String,
 }
 
 fn optional(name: &str) -> Option<String> {
@@ -110,6 +113,7 @@ impl Config {
             wiki_index_ttl_secs: 300,
             mc_status_addr: or_default("MC_STATUS_ADDR", "toro-velocity:25565"),
             mc_status_host: or_default("MC_STATUS_HOST", "torosaba.net"),
+            state_dir: or_default("STATE_DIR", "/data"),
         })
     }
 }

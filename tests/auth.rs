@@ -235,9 +235,10 @@ async fn api_token_requires_post_and_session() {
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["ok"], true);
     assert!(body["expires_at"].as_str().unwrap().ends_with(".000Z"));
+    // トークンを返すのは 1 か所だけ。接続先の案内などは Wiki の記事にある
+    assert_eq!(body.as_object().unwrap().len(), 3);
 
     let token = body["token"].as_str().unwrap();
-    assert_eq!(body["connectors"]["chatgpt"]["token"], token);
     let claims = jwt::verify(token, JWT_SECRET).unwrap();
     assert_eq!(claims["purpose"], "ai_connector");
     assert!(claims["exp"].as_i64().unwrap() > jwt::now() + 89 * 86400);
@@ -251,6 +252,143 @@ async fn api_token_requires_post_and_session() {
         .await
         .unwrap();
     assert_eq!(res.json::<Value>().await.unwrap()["user"]["id"], "1001");
+}
+
+async fn issue_token(server: &TestServer, cookie: &str) -> String {
+    let res = server
+        .client
+        .post(server.url("/api/auth/token"))
+        .header(header::COOKIE, cookie)
+        .header(header::ORIGIN, WIKI_ORIGIN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
+    let body: Value = res.json().await.unwrap();
+    body["token"].as_str().unwrap().to_string()
+}
+
+async fn is_accepted(server: &TestServer, token: &str) -> bool {
+    let me: Value = server
+        .api_client
+        .get(server.url("/me"))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    me["authenticated"] == true
+}
+
+#[tokio::test]
+async fn recreating_a_token_revokes_only_the_previous_one() {
+    let server = start().await;
+    let member = server.login("member").await;
+    let other = server.login("other").await;
+
+    let first = issue_token(&server, &member).await;
+    let others = issue_token(&server, &other).await;
+    assert!(is_accepted(&server, &first).await);
+
+    let second = issue_token(&server, &member).await;
+    assert_ne!(first, second);
+    assert!(!is_accepted(&server, &first).await);
+    assert!(is_accepted(&server, &second).await);
+    // 他の人のトークン、ブラウザのセッション、短いトークンは巻き込まない
+    assert!(is_accepted(&server, &others).await);
+    assert!(
+        server
+            .get_with_cookie("/", &member)
+            .await
+            .text()
+            .await
+            .unwrap()
+            .contains("ログイン中")
+    );
+    let short = server.session_token(&member).await;
+    assert!(is_accepted(&server, &short).await);
+}
+
+#[tokio::test]
+async fn connector_tokens_without_a_generation_are_rejected() {
+    let server = start().await;
+    let old = jwt::sign(
+        &json!({
+            "id": "1001", "username": "member_user", "can_edit": true,
+            "purpose": "ai_connector", "exp": jwt::now() + 3600,
+        }),
+        JWT_SECRET,
+    );
+    assert!(!is_accepted(&server, &old).await);
+
+    // 世代が記録と違うものも通らない
+    let cookie = server.login("member").await;
+    issue_token(&server, &cookie).await;
+    let forged_generation = jwt::sign(
+        &json!({
+            "id": "1001", "username": "member_user", "can_edit": true, "generation": "guess",
+            "purpose": "ai_connector", "exp": jwt::now() + 3600,
+        }),
+        JWT_SECRET,
+    );
+    assert!(!is_accepted(&server, &forged_generation).await);
+}
+
+#[tokio::test]
+async fn token_is_never_shown_again_after_it_is_issued() {
+    let server = start().await;
+    let cookie = server.login("member").await;
+
+    let before = server
+        .get_with_cookie("/", &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(before.contains("トークンを発行する"));
+    assert!(before.contains("未発行"));
+
+    let token = issue_token(&server, &cookie).await;
+    for path in ["/", "/api/auth/me"] {
+        let page = server
+            .get_with_cookie(path, &cookie)
+            .await
+            .text()
+            .await
+            .unwrap();
+        assert!(!page.contains(&token), "{path}");
+    }
+
+    let after = server
+        .get_with_cookie("/", &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(after.contains("トークンを再作成する"));
+    assert!(after.contains("まで有効"));
+    assert!(!after.contains("未発行"));
+}
+
+#[tokio::test]
+async fn failing_to_save_the_record_issues_no_token() {
+    let missing = std::env::temp_dir().join("toro-auth-test-does-not-exist");
+    let server = start_with(|cfg| cfg.state_dir = missing.to_string_lossy().into_owned()).await;
+    let cookie = server.login("member").await;
+    let res = server
+        .client
+        .post(server.url("/api/auth/token"))
+        .header(header::COOKIE, &cookie)
+        .header(header::ORIGIN, WIKI_ORIGIN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 500);
+    let body: Value = res.json().await.unwrap();
+    assert!(body.get("token").is_none());
 }
 
 #[tokio::test]
@@ -304,6 +442,35 @@ async fn home_shows_guest_and_session_and_escapes_names() {
     assert!(guest.contains("未ログイン"));
     assert!(guest.contains("/api/auth/login"));
     assert!(!guest.contains("{{"));
+    // ログインの情報のほかに、説明を置かない
+    for extra in [
+        "窓口",
+        "場所",
+        "OpenAPI",
+        "mcp.torosaba.net",
+        "api.torosaba.net",
+    ] {
+        assert!(!guest.contains(extra), "{extra}");
+    }
+
+    let member = server.login("member").await;
+    let page = server
+        .get_with_cookie("/", &member)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("https://cdn.discordapp.com/avatars/1001/abc"));
+    assert!(page.contains("referrerpolicy=\"no-referrer\""));
+    for extra in [
+        "窓口",
+        "場所",
+        "OpenAPI",
+        "mcp.torosaba.net",
+        "api.torosaba.net",
+    ] {
+        assert!(!page.contains(extra), "{extra}");
+    }
 
     let cookie = server.login("xss").await;
     let page = server

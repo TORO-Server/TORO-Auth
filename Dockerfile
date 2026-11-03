@@ -15,9 +15,12 @@ RUN mkdir src && echo 'fn main() {}' > src/main.rs && touch src/lib.rs \
 COPY src ./src
 COPY assets ./assets
 RUN touch src/main.rs src/lib.rs && cargo build --release --locked
+RUN mkdir /data-empty
 
 FROM scratch
 COPY --from=compile /src/target/release/toro-auth /toro-auth
+# 90 日トークンの世代の記録。名前付きボリュームは、この持ち主を受け継ぐ
+COPY --from=compile --chown=65532:65532 /data-empty /data
 USER 65532:65532
 ENV PORT=8080
 EXPOSE 8080

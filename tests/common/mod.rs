@@ -210,6 +210,10 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         ),
     ]);
 
+    let state_dir =
+        std::env::temp_dir().join(format!("toro-auth-test-{}", toro_auth::util::random_hex(8)));
+    std::fs::create_dir_all(&state_dir).unwrap();
+
     let mut cfg = Config {
         port: 0,
         issuer: base.clone(),
@@ -234,6 +238,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         // 誰も待っていないポート
         mc_status_addr: "127.0.0.1:9".into(),
         mc_status_host: "torosaba.net".into(),
+        state_dir: state_dir.to_string_lossy().into_owned(),
     };
     customize(&mut cfg);
 

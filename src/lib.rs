@@ -51,6 +51,7 @@ pub struct App {
     pub requests: Semaphore,
     pub sse_streams: Arc<Semaphore>,
     pub wiki_index: wiki::search::Index,
+    pub tokens: auth::tokens::TokenStore,
 }
 
 impl App {
@@ -61,8 +62,10 @@ impl App {
             .timeout(Duration::from_secs(30))
             .user_agent("TORO-Auth-Gateway")
             .build()?;
+        let tokens = auth::tokens::TokenStore::load(&cfg.state_dir);
         Ok(Self {
             cfg,
+            tokens,
             http,
             used_codes: Mutex::new(HashMap::new()),
             requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),

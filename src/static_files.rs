@@ -1,4 +1,4 @@
-//! バイナリに埋め込んだ静的ファイル (画面のスタイル、フォント、スクリーンショット)
+//! バイナリに埋め込んだ静的ファイル (画面のスタイル、フォント、TORO のアイコン)
 
 use axum::http::header::{self, HeaderValue};
 use axum::response::Response;
@@ -16,14 +16,30 @@ pub fn serve(path: &str) -> Option<Response> {
             "text/css; charset=utf-8",
             STYLE_CACHE,
         ),
-        "/_assets/mcp.css" => (
-            include_bytes!("../assets/mcp/theme.css"),
-            "text/css; charset=utf-8",
-            STYLE_CACHE,
-        ),
         "/_assets/favicon.svg" => (
-            include_bytes!("../assets/auth/favicon.svg"),
+            include_bytes!("../assets/icons/favicon.svg"),
             "image/svg+xml",
+            IMAGE_CACHE,
+        ),
+        // AI クライアントや検索エンジンは、決まった場所のアイコンを取りに来る
+        "/favicon.ico" | "/favicon.png" | "/_assets/favicon-32.png" => (
+            include_bytes!("../assets/icons/favicon-32.png"),
+            "image/png",
+            IMAGE_CACHE,
+        ),
+        "/apple-touch-icon.png" => (
+            include_bytes!("../assets/icons/apple-touch-icon.png"),
+            "image/png",
+            IMAGE_CACHE,
+        ),
+        "/_assets/icon-192.png" => (
+            include_bytes!("../assets/icons/icon-192.png"),
+            "image/png",
+            IMAGE_CACHE,
+        ),
+        "/_assets/icon-512.png" => (
+            include_bytes!("../assets/icons/icon-512.png"),
+            "image/png",
             IMAGE_CACHE,
         ),
         "/_assets/pixel.woff2" => (
@@ -34,21 +50,6 @@ pub fn serve(path: &str) -> Option<Response> {
         "/_assets/OFL.txt" => (
             include_bytes!("../assets/fonts/OFL.txt"),
             "text/plain; charset=utf-8",
-            IMAGE_CACHE,
-        ),
-        "/_assets/claude_settings.webp" => (
-            include_bytes!("../assets/mcp/claude_settings.webp"),
-            "image/webp",
-            IMAGE_CACHE,
-        ),
-        "/_assets/chatgpt_settings.webp" => (
-            include_bytes!("../assets/mcp/chatgpt_settings.webp"),
-            "image/webp",
-            IMAGE_CACHE,
-        ),
-        "/_assets/gemini_settings.webp" => (
-            include_bytes!("../assets/mcp/gemini_settings.webp"),
-            "image/webp",
             IMAGE_CACHE,
         ),
         _ => return None,

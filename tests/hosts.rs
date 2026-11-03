@@ -42,7 +42,7 @@ async fn each_host_only_answers_for_its_own_role() {
         assert_eq!(server.api_get(path).await.status(), 404, "{path}");
     }
 
-    // mcp はログインの画面を持たない
+    // mcp は画面を持たず、ブラウザはつなぎ方の記事へ送る
     let res = server
         .mcp_client
         .get(server.url("/"))
@@ -50,7 +50,8 @@ async fn each_host_only_answers_for_its_own_role() {
         .send()
         .await
         .unwrap();
-    assert!(res.text().await.unwrap().contains("外部 AI 連携システム"));
+    assert_eq!(res.status(), 302);
+    assert!(location(&res).starts_with("https://wiki.torosaba.net/wiki/AI"));
 }
 
 #[tokio::test]
@@ -206,34 +207,6 @@ async fn session_tokens_need_the_cookie_a_trusted_origin_and_post() {
 }
 
 #[tokio::test]
-async fn connector_info_points_at_the_right_hosts() {
-    let server = start().await;
-    let cookie = server.login("member").await;
-    let body: Value = server
-        .client
-        .post(server.url("/api/auth/token"))
-        .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
-        .send()
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
-
-    assert_eq!(body["services"]["mcp"], "https://mcp.torosaba.net");
-    assert_eq!(
-        body["connectors"]["claude_mcp"]["url"],
-        "https://mcp.torosaba.net/"
-    );
-    assert_eq!(
-        body["connectors"]["chatgpt"]["schema_url"],
-        "https://api.torosaba.net/openapi.json"
-    );
-    assert!(!body.to_string().contains("/api/mcp"));
-}
-
-#[tokio::test]
 async fn openapi_describes_the_api_host_only() {
     let server = start().await;
     let spec: Value = server.api_get("/openapi.json").await.json().await.unwrap();
@@ -257,9 +230,6 @@ async fn pages_take_their_urls_from_the_config() {
     .await;
 
     let home = server.get("/").await.text().await.unwrap();
-    assert!(home.contains("https://mcp.example.test/"));
-    assert!(home.contains("https://api.example.test/"));
-    assert!(home.contains("https://wiki.example.test/wiki/"));
     assert!(
         !home.contains("torosaba.net/"),
         "hard-coded URL in the home page"
@@ -273,16 +243,13 @@ async fn pages_take_their_urls_from_the_config() {
         .header(header::ACCEPT, "text/html")
         .send()
         .await
-        .unwrap()
-        .text()
-        .await
         .unwrap();
-    assert!(guide.contains("https://mcp.example.test/"));
-    assert!(
-        !guide.contains("mcp.torosaba.net"),
-        "hard-coded URL in the guide"
-    );
-    assert!(!guide.contains("{{"));
+    assert!(location(&guide).starts_with("https://wiki.example.test/wiki/"));
+    assert!(location(&guide).ends_with('/'));
+
+    let invalid = server.get("/oauth/authorize").await.text().await.unwrap();
+    assert!(invalid.contains("https://wiki.example.test/wiki/"));
+    assert!(!invalid.contains("{{"));
 
     let body: Value = server
         .client
@@ -308,17 +275,5 @@ async fn asset_urls_change_with_each_version() {
     let version = env!("CARGO_PKG_VERSION");
     let home = server.get("/").await.text().await.unwrap();
     assert!(home.contains(&format!("/_assets/auth.css?v={version}")));
-
-    let guide = server
-        .mcp_client
-        .get(server.url("/"))
-        .header(header::ACCEPT, "text/html")
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    assert!(guide.contains(&format!("/_assets/mcp.css?v={version}")));
-    assert!(guide.contains(&format!("/_assets/claude_settings.webp?v={version}")));
+    assert!(home.contains(&format!("/_assets/favicon.svg?v={version}")));
 }

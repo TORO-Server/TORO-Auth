@@ -1,26 +1,31 @@
-        <section class="win" aria-label="ログイン中の利用者">
-          <div class="member">
-            <div class="portrait" aria-hidden="true"></div>
-            <div>
-              <p class="member-name">{{DISPLAY_NAME}} <span class="muted">@{{USERNAME}}</span></p>
-              <p class="good">ログイン中 (Discord)</p>
-              <div class="gauge {{GAUGE_CLASS}}" aria-hidden="true"><i></i></div>
-              <dl>
-                <dt>ID</dt><dd>{{ID}}</dd>
-                <dt>Wiki</dt><dd class="{{EDIT_CLASS}}">{{EDIT_LABEL}}</dd>
-                <dt>ロール</dt><dd>{{ROLES}} 個</dd>
-              </dl>
-            </div>
-          </div>
-        </section>
-        <nav class="win" aria-label="ログイン中の操作">
-          <ul class="cmd">
-            <li><button type="button" id="issue-token" data-help="AI コネクタ用の、90 日間使えるトークンを発行します。">トークンを発行する</button></li>
-            <li><a href="/api/auth/logout" class="danger" data-help="このブラウザのログインを終わらせます。">ログアウトする</a></li>
-          </ul>
-        </nav>
-        <section class="win" id="token-win" hidden>
-          <h2>発行したトークン</h2>
-          <p class="warn">人に見せないでください。</p>
-          <textarea id="token-value" readonly aria-label="発行したトークン"></textarea>
-        </section>
+<section class="win" aria-label="ログイン中の利用者">
+      <div class="member">
+        <img class="portrait" src="{{AVATAR_URL}}" alt="" width="72" height="72" referrerpolicy="no-referrer">
+        <div>
+          <p class="member-name">{{DISPLAY_NAME}} <span class="muted">@{{USERNAME}}</span></p>
+          <p class="good">ログイン中 (Discord)</p>
+          <div class="gauge {{GAUGE_CLASS}}" aria-hidden="true"><i></i></div>
+          <dl>
+            <dt>ID</dt><dd>{{ID}}</dd>
+            <dt>Wiki</dt><dd class="{{EDIT_CLASS}}">{{EDIT_LABEL}}</dd>
+            <dt>ロール</dt><dd>{{ROLES}} 個</dd>
+            <dt>トークン</dt><dd id="token-status">{{TOKEN_STATUS}}</dd>
+          </dl>
+        </div>
+      </div>
+    </section>
+    <nav class="win" aria-label="ログイン中の操作">
+      <ul class="cmd">
+        <li><button type="button" id="issue-token" data-exists="{{TOKEN_EXISTS}}">{{TOKEN_ACTION}}</button></li>
+        <li><a href="/api/auth/logout" class="danger">ログアウトする</a></li>
+      </ul>
+      <p id="token-message" class="warn" aria-live="polite"></p>
+    </nav>
+    <section class="win" id="token-win" hidden>
+      <h2>新しいトークン</h2>
+      <p class="warn">表示はこの一度だけです。人に見せないでください。</p>
+      <textarea id="token-value" readonly autocomplete="off" spellcheck="false" aria-label="新しいトークン"></textarea>
+      <ul class="cmd">
+        <li><button type="button" id="copy-token">コピーする</button></li>
+      </ul>
+    </section>

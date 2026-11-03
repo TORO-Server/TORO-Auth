@@ -60,7 +60,8 @@ pub fn issue_session_token(app: &App, ctx: &Ctx) -> Response {
     )
 }
 
-/// 90 日トークンの発行。本人のブラウザからだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)
+/// 90 日トークンの発行と再作成。本人のブラウザからだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)。
+/// トークンを返すのはこの応答の一度だけで、前のトークンは使えなくなる
 pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     if ctx.method != Method::POST {
         return http::error(ctx, "Method Not Allowed", 405);
@@ -71,45 +72,29 @@ pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
 
     let now = jwt::now();
     let exp = now + CONNECTOR_TOKEN_LIFETIME;
-    let mut claims = session.claims.clone();
-    claims.insert("purpose".into(), json!("ai_connector"));
+    let generation = match app.tokens.rotate(session.id(), exp) {
+        Ok(generation) => generation,
+        Err(e) => {
+            eprintln!("token store: {e}");
+            return http::error(ctx, "Could not save the token record", 500);
+        }
+    };
+    let mut claims = session.claims;
+    claims.insert("purpose".into(), json!(session::CONNECTOR_PURPOSE));
+    claims.insert("generation".into(), json!(generation));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(exp));
     let token = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
 
-    let mcp_url = format!("{}/", app.cfg.mcp_url);
-    let schema_url = format!("{}/openapi.json", app.cfg.api_url);
     http::json(
         ctx,
-        &json!({
-            "ok": true,
-            "token": token,
-            "expires_at": iso8601(exp),
-            "user": session.claims,
-            "services": app.cfg.services(),
-            "connectors": {
-                "claude_mcp": {
-                    "type": "mcp",
-                    "url": mcp_url,
-                    "config_example": {
-                        "mcpServers": {
-                            "toro-wiki": {
-                                "url": mcp_url,
-                                "headers": { "Authorization": format!("Bearer {token}") },
-                            },
-                        },
-                    },
-                },
-                "chatgpt": { "type": "openapi", "schema_url": schema_url, "auth_type": "bearer", "token": token },
-                "gemini": { "type": "openapi", "schema_url": schema_url, "token": token },
-            },
-        }),
+        &json!({ "ok": true, "token": token, "expires_at": iso8601(exp) }),
         200,
     )
 }
 
 /// UNIX 時刻を `2026-01-02T03:04:05.000Z` にする
-fn iso8601(unix: i64) -> String {
+pub fn iso8601(unix: i64) -> String {
     let days = unix.div_euclid(86400);
     let secs = unix.rem_euclid(86400);
     // 暦の計算 (Howard Hinnant の civil_from_days)

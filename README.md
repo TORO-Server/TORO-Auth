@@ -8,7 +8,7 @@ TORO Server の認証、REST API、AI コネクタのサーバーです。Rust �
 | --- | --- | --- |
 | `https://auth.torosaba.net/` | だれなのかを確かめる | Discord ログイン、トークンの発行、OAuth 2.0 の認可 |
 | `https://api.torosaba.net/` | データを読み書きする | Wiki の原稿の取得と保存、OpenAPI の仕様書 |
-| `https://mcp.torosaba.net/` | AI クライアントがつなぐ | Remote MCP サーバーと、接続の手順 |
+| `https://mcp.torosaba.net/` | AI クライアントがつなぐ | Remote MCP サーバー。ブラウザで開くと Wiki の「AIクライアントの接続方法」へ移動する |
 
 ホストごとに、自分の役割の URL にだけ答えます (`src/routes.rs`)。以前の URL は正しいホストへ 308 で転送します。
 
@@ -23,16 +23,17 @@ TORO Server の認証、REST API、AI コネクタのサーバーです。Rust �
                                                                            ├─ GitHub API (Wiki の原稿)
                                                                            └─ toro-velocity:25565 (稼働状態)
 ```
-データベースは使いません。セッションもトークンも署名付きの JWT です。再起動して失うのは、使用済みの認可コードの記録 (有効期限は 5 分) だけです。
+データベースは使いません。セッションもトークンも署名付きの JWT です。ディスクに残すのは、90 日トークンの世代の記録 (`STATE_DIR`、既定は `/data`) だけです。トークンそのものは保存せず、発行の応答で一度だけ返します。再起動して失うのは、使用済みの認可コードの記録 (有効期限は 5 分) だけです。
 
 ## 機能ごとの置き場所
 
 | 機能 | ソース | 画面・定義 | 試験 |
 | --- | --- | --- | --- |
-| Discord ログイン、セッション、API トークン | `src/auth/` | `assets/auth/` | `tests/auth.rs` |
+| Discord ログイン、セッション、API トークンの発行と再作成 | `src/auth/` | `assets/auth/` | `tests/auth.rs` |
 | AI クライアント向けの OAuth 2.0 | `src/oauth/` | `assets/oauth/` | `tests/oauth.rs` |
 | Wiki の原稿の読み書き (GitHub) | `src/wiki/` | | `tests/wiki.rs` |
 | Remote MCP サーバーとツール | `src/mcp/` | `assets/mcp/` | `tests/mcp.rs` |
+| アイコン (Wiki と同じ TORO のアイコン) | `src/static_files.rs` | `assets/icons/` | `tests/mcp.rs` |
 | Minecraft の稼働状態 | `src/minecraft.rs` | | 同じファイル内 |
 | トップページ | `src/home.rs` | `assets/home/` | `tests/auth.rs` |
 | REST API の入り口 | `src/api.rs` | | `tests/hosts.rs` |
@@ -45,10 +46,7 @@ TORO Server の認証、REST API、AI コネクタのサーバーです。Rust �
 
 ## 画面
 
-| ホスト | 雰囲気 | スタイル |
-| --- | --- | --- |
-| mcp.torosaba.net | Dynmap の平面の地図の上に、黒地に白い角丸枠の窓とコマンド。文字が 1 字ずつ流れる窓 | `assets/mcp/theme.css` |
-| auth.torosaba.net | 夜の色に沈めた Dynmap の立体の地図の上に、青いグラデーションの窓と銀の枠、指のカーソル | `assets/auth/theme.css` |
+auth.torosaba.net の画面は、夜の色に沈めた Dynmap の立体の地図の上に、青いグラデーションの窓と銀の枠、指のカーソルです (`assets/auth/theme.css`)。ログインの情報とトークンの発行だけを置きます。mcp.torosaba.net は画面を持ちません。コネクタの名前はどのクライアントでも `TORO Server` です。
 
 背景は map.torosaba.net の本物のタイルです。地図が更新されれば背景も変わり、読めないときは単色になります。
 
@@ -90,7 +88,7 @@ GitHub Actions が、試験に通ったものだけを GHCR に置きます (lin
 
 ### 知ったうえで残しているもの
 
-- トークンを個別に失効できない。全部を無効にするには `JWT_SECRET` を変える
+- 90 日トークンは再作成で失効するが、OAuth のトークンを個別に失効できない。全部を無効にするには `JWT_SECRET` を変える
 - `can_edit` はトークンの発行時のまま。ギルドを抜けても、トークンの期限 (30 / 90 日、リフレッシュ 180 日) までは編集できる
 - リフレッシュトークンを更新時に取り替えない。クライアントにも結び付けていない
 - 使用済みの認可コードの記録はメモリの中だけ。再起動の直後は、5 分以内のコードをもう一度使える
@@ -113,5 +111,3 @@ GitHub Actions が、試験に通ったものだけを GHCR に置きます (lin
 - MCP は、無効なトークンに 401 と `WWW-Authenticate` を返す (クライアントが再認可できるように)。通知への応答は 202、`DELETE` は 405
 - 稼働状態は外部の api.mcsrvstat.us でなく、Server List Ping で直接尋ねる
 - ロールは Bot トークンが無くても、利用者のトークン (guilds.members.read) で読む
-- mcp.torosaba.net の案内画面は、ログイン状態を表示しない (認証の管理は auth.torosaba.net)
-- 案内画面のスクリーンショットは data: URI をやめて `/_assets/` から返す

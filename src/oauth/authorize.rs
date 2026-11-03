@@ -16,8 +16,8 @@ use crate::http::{self, Ctx};
 use crate::jwt;
 use crate::util::{encode_uri_component, random_hex, sha256_base64url};
 
-const CSP_LOGIN: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net; base-uri 'none'; form-action 'none'";
-const CSP_WITH_APPROVE: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP_LOGIN: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'";
+const CSP_WITH_APPROVE: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const CONSENT_TYPE: &str = "oauth_consent";
 const CONSENT_LIFETIME: i64 = 600;
 const CODE_LIFETIME: i64 = 300;

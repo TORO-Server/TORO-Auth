@@ -30,10 +30,15 @@ async fn initialize_echoes_the_protocol_version() {
     let body: Value = res.json().await.unwrap();
     assert_eq!(body["id"], 7);
     assert_eq!(body["result"]["protocolVersion"], "2025-06-18");
+    let info = &body["result"]["serverInfo"];
+    assert_eq!(info["name"], "TORO Server");
+    assert_eq!(info["title"], "TORO Server");
+    assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(
-        body["result"]["serverInfo"]["name"],
-        "toro-server-ai-gateway"
+        info["icons"][0]["src"],
+        "https://mcp.torosaba.net/_assets/icon-512.png"
     );
+    assert_eq!(info["icons"][0]["mimeType"], "image/png");
     assert_eq!(
         body["result"]["capabilities"]["tools"]["listChanged"],
         false
@@ -110,7 +115,7 @@ async fn notifications_and_errors() {
 }
 
 #[tokio::test]
-async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
+async fn mcp_host_sends_browsers_to_the_wiki_and_answers_clients_with_json() {
     let server = start().await;
     let request = |accept: &'static str| {
         server
@@ -120,17 +125,15 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
             .header(header::ACCEPT, accept)
     };
 
-    let page = request("text/html")
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    assert!(page.contains("TORO サーバー 外部 AI 連携システム"));
-    assert!(page.contains("ログイン状態の確認・ログイン"));
-    assert!(page.contains("/_assets/claude_settings.webp"));
-    assert!(!page.contains("{{"));
+    let res = request("text/html").send().await.unwrap();
+    assert_eq!(res.status(), 302);
+    assert_eq!(
+        location(&res),
+        format!(
+            "https://wiki.torosaba.net/wiki/{}/",
+            toro_auth::util::encode_uri_component("AIクライアントの接続方法")
+        )
+    );
 
     let body: Value = request("application/json")
         .send()
@@ -155,7 +158,7 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
 }
 
 #[tokio::test]
-async fn mcp_host_still_serves_oauth_and_images() {
+async fn mcp_host_still_serves_oauth_and_icons() {
     let server = start().await;
     let on_mcp = |path: &str| {
         server
@@ -173,13 +176,16 @@ async fn mcp_host_still_serves_oauth_and_images() {
         .unwrap();
     assert_eq!(meta["resource"], "https://mcp.torosaba.net");
 
-    for image in ["claude_settings", "chatgpt_settings", "gemini_settings"] {
-        let res = on_mcp(&format!("/_assets/{image}.webp"))
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(res.headers()[header::CONTENT_TYPE], "image/webp");
-        assert!(res.bytes().await.unwrap().starts_with(b"RIFF"));
+    for icon in [
+        "/favicon.ico",
+        "/favicon.png",
+        "/apple-touch-icon.png",
+        "/_assets/icon-192.png",
+        "/_assets/icon-512.png",
+    ] {
+        let res = on_mcp(icon).send().await.unwrap();
+        assert_eq!(res.headers()[header::CONTENT_TYPE], "image/png", "{icon}");
+        assert!(res.bytes().await.unwrap().starts_with(b"\x89PNG"), "{icon}");
     }
 
     // 他の API は MCP に吸い込まれる (Worker と同じ)
@@ -297,7 +303,7 @@ async fn wiki_save_tool_checks_permission_and_commits() {
         commits[0]["message"]
             .as_str()
             .unwrap()
-            .starts_with("docs: 更新 (by editor via AI Gateway)\n\nCo-authored-by:")
+            .starts_with("docs: 更新 (by editor via TORO Server)\n\nCo-authored-by:")
     );
 }
 
@@ -435,7 +441,6 @@ async fn resource_metadata_is_served_for_clients_using_a_path() {
 async fn theme_files_are_served_with_the_right_types() {
     let server = start().await;
     for (path, content_type) in [
-        ("/_assets/mcp.css", "text/css; charset=utf-8"),
         ("/_assets/auth.css", "text/css; charset=utf-8"),
         ("/_assets/pixel.woff2", "font/woff2"),
         ("/_assets/favicon.svg", "image/svg+xml"),

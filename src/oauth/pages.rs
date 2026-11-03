@@ -35,6 +35,7 @@ pub fn consent(cfg: &Config, options: &Consent) -> String {
             render(
                 include_str!("../../assets/oauth/consent_session.html"),
                 &[
+                    ("AVATAR_URL", session.avatar_url()),
                     ("USERNAME", session.username()),
                     ("ROLE_COLOR", color),
                     ("ROLE_LABEL", label),

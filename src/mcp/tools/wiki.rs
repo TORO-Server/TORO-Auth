@@ -76,7 +76,7 @@ pub async fn save_page(app: &App, args: &Value, session: Option<&Session>) -> Va
     let message = args["message"]
         .as_str()
         .unwrap_or("Update via AI Connector");
-    let commit_message = format!("docs: {message} (by {} via AI Gateway)", user.username());
+    let commit_message = format!("docs: {message} (by {} via TORO Server)", user.username());
     let commit = Commit {
         path: requested,
         content,

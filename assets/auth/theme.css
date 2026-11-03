@@ -88,19 +88,6 @@ a {
   align-items: center;
 }
 
-/* メニューの画面 */
-.menu {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 248px;
-  gap: 8px;
-  align-items: start;
-}
-
-.menu-side {
-  display: grid;
-  gap: 8px;
-}
-
 /* 仲間の欄 */
 .member {
   display: grid;
@@ -112,16 +99,17 @@ a {
 .portrait {
   width: 72px;
   height: 72px;
-  background: url("/_assets/favicon.svg") center / contain no-repeat;
-  image-rendering: pixelated;
+  object-fit: cover;
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  background: #000;
 }
 
 .member-name {
   font-size: 20px;
 }
 
-.member dl,
-.facts {
+.member dl {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 0 14px;
@@ -206,42 +194,6 @@ dt {
   }
 }
 
-/* 持ち物の一覧 */
-.items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 24px;
-  list-style: none;
-}
-
-.items li {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-}
-
-.items code {
-  font: inherit;
-  color: var(--warn);
-}
-
-.items small {
-  display: block;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.items .service {
-  grid-template-columns: 56px minmax(0, 1fr);
-}
-
-.tag {
-  color: var(--good);
-}
-
-.tag.post {
-  color: var(--warn);
-}
-
 textarea {
   width: 100%;
   height: 84px;
@@ -253,6 +205,10 @@ textarea {
   font: inherit;
   font-size: 16px;
   resize: vertical;
+}
+
+#token-message:empty {
+  display: none;
 }
 
 .good {
@@ -295,11 +251,6 @@ footer {
   .screen-narrow {
     min-height: calc(100vh - 16px);
     min-height: calc(100dvh - 16px);
-  }
-
-  .menu,
-  .items {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .member {

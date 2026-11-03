@@ -421,7 +421,7 @@ async fn personal_responses_are_not_cacheable() {
         .unwrap();
     assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store");
 
-    let image = server.get("/_assets/claude_settings.webp").await;
+    let image = server.get("/_assets/icon-512.png").await;
     assert_eq!(
         image.headers()[header::CACHE_CONTROL],
         "public, max-age=86400"

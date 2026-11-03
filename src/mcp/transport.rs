@@ -1,4 +1,4 @@
-//! MCP の受け口: 案内画面、SSE、発見用の JSON、JSON-RPC 2.0
+//! MCP の受け口: つなぎ方の記事への案内、SSE、発見用の JSON、JSON-RPC 2.0
 
 use std::convert::Infallible;
 
@@ -9,13 +9,14 @@ use axum::response::{IntoResponse, Response};
 use futures_util::{StreamExt, stream};
 use serde_json::{Value, json};
 
-use super::{guide, tools};
+use super::tools;
 use crate::App;
 use crate::auth::session;
 use crate::http::{self, Ctx};
 
-const SERVER_NAME: &str = "toro-server-ai-gateway";
-const SERVER_VERSION: &str = "1.2.0";
+/// コネクタの名前。どのクライアントにもこの表記で見せる
+const SERVER_NAME: &str = "TORO Server";
+const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_PROTOCOL_VERSION: &str = "2025-03-26";
 
 fn headers(ctx: &Ctx) -> HeaderMap {
@@ -78,13 +79,9 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
     let is_dedicated_path = path == "/mcp" || path.starts_with("/mcp/");
     let wants_json = accept.contains("application/json") || ctx.q("format") == Some("json");
 
+    // ブラウザで開いた人には、つなぎ方の記事を見せる
     if !is_dedicated_path && !wants_json && accept.contains("text/html") {
-        return http::respond(
-            200,
-            http::public_headers(),
-            http::HTML_UTF8,
-            guide::render_page(&app.cfg),
-        );
+        return http::redirect(&app.cfg.connect_page());
     }
 
     if accept.contains("text/event-stream") {
@@ -104,13 +101,14 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
         headers(ctx),
         &json!({
             "status": "ok",
-            "service": "TORO Server AI Gateway (MCP)",
+            "service": SERVER_NAME,
             "version": SERVER_VERSION,
             "authenticated": session.is_some(),
             "user": user,
             "tools": tool_names,
             "instructions": format!(
-                "Connect via Claude / ChatGPT / Gemini by setting URL \"{mcp_url}/\". Browser setup guide available at the same URL."
+                "Connect via Claude / ChatGPT / Gemini by setting URL \"{mcp_url}/\". Setup guide: {}",
+                app.cfg.connect_page()
             ),
         }),
         200,
@@ -168,8 +166,25 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
             reply(json!({
                 "protocolVersion": version,
                 "capabilities": { "tools": { "listChanged": false } },
-                "serverInfo": { "name": SERVER_NAME, "version": SERVER_VERSION },
-                "instructions": "TORO Server AI Gateway provides tools to interact with TORO Server Wiki and server status.",
+                "serverInfo": {
+                    "name": SERVER_NAME,
+                    "title": SERVER_NAME,
+                    "version": SERVER_VERSION,
+                    "websiteUrl": app.cfg.wiki_url,
+                    "icons": [
+                        {
+                            "src": format!("{}/_assets/icon-512.png", app.cfg.mcp_url),
+                            "mimeType": "image/png",
+                            "sizes": ["512x512"],
+                        },
+                        {
+                            "src": format!("{}/_assets/icon-192.png", app.cfg.mcp_url),
+                            "mimeType": "image/png",
+                            "sizes": ["192x192"],
+                        },
+                    ],
+                },
+                "instructions": "TORO Server provides tools to interact with the TORO Server Wiki and server status.",
             }))
         }
         "notifications/initialized" => http::accepted(headers(ctx)),

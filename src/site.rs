@@ -14,6 +14,7 @@ use crate::template;
 use crate::util::encode_uri_component;
 
 const ROLES_PAGE: &str = "サービスのURLと役割";
+const CONNECT_PAGE: &str = "AIクライアントの接続方法";
 
 /// リクエストのホストが担当する役割
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,26 +45,23 @@ impl Config {
         json!({ "auth": self.issuer, "api": self.api_url, "mcp": self.mcp_url })
     }
 
-    /// 人向けの正本のページ
-    pub fn roles_page(&self) -> String {
-        format!(
-            "{}/wiki/{}",
-            self.wiki_url,
-            encode_uri_component(ROLES_PAGE)
-        )
+    /// Wiki のページの URL。末尾の / まで付ける (無いと Wiki が 301 で付け直す)
+    fn wiki_page(&self, name: &str) -> String {
+        format!("{}/wiki/{}/", self.wiki_url, encode_uri_component(name))
     }
 
-    /// 画面の中の `{{AUTH_URL}}` などに、設定の URL を入れる
+    /// 人向けの、URL と役割のページ
+    pub fn roles_page(&self) -> String {
+        self.wiki_page(ROLES_PAGE)
+    }
+
+    /// 人向けの、AI クライアントのつなぎ方のページ
+    pub fn connect_page(&self) -> String {
+        self.wiki_page(CONNECT_PAGE)
+    }
+
+    /// 画面の中の `{{CONNECT_PAGE}}` に、設定の URL を入れる
     pub fn fill_links(&self, html: &str) -> String {
-        template::render(
-            html,
-            &[
-                ("AUTH_URL", &self.issuer),
-                ("API_URL", &self.api_url),
-                ("MCP_URL", &self.mcp_url),
-                ("WIKI_URL", &self.wiki_url),
-                ("ROLES_PAGE", &self.roles_page()),
-            ],
-        )
+        template::render(html, &[("CONNECT_PAGE", &self.connect_page())])
     }
 }
