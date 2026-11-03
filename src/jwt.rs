@@ -1,4 +1,4 @@
-//! JWT (HS256)。Worker 版と同じ形式で、同じ秘密鍵なら相互に検証できる
+//! JWT (HS256)。署名の鍵は `JWT_SECRET`
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
