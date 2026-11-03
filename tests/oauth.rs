@@ -87,10 +87,7 @@ async fn metadata_is_served() {
         meta["token_endpoint"],
         format!("{}/oauth/token", server.base)
     );
-    assert_eq!(
-        meta["code_challenge_methods_supported"],
-        json!(["S256", "plain"])
-    );
+    assert_eq!(meta["code_challenge_methods_supported"], json!(["S256"]));
 
     let openid: Value = server
         .get("/.well-known/openid-configuration")
@@ -151,7 +148,7 @@ async fn full_flow_from_guest_to_refresh() {
         .await
         .unwrap();
     assert!(page.contains("LOGIN VIA DISCORD"));
-    assert!(page.contains("REDIRECT TARGET: https://claude.ai"));
+    assert!(page.contains("TOKENS WILL BE SENT TO: https://claude.ai"));
     assert!(!page.contains("consent="));
     assert!(!page.contains("{{"));
 
@@ -467,7 +464,7 @@ async fn userinfo_requires_a_bearer_token() {
     assert_eq!(server.get("/userinfo").await.status(), 401);
     // セッションのトークンには sub が無い
     let cookie = server.login("member").await;
-    let token = cookie.strip_prefix("toro_session=").unwrap();
+    let token = cookie.strip_prefix("__Host-toro_session=").unwrap();
     let res = server
         .client
         .get(server.url("/oauth/userinfo"))
@@ -512,7 +509,7 @@ async fn bad_redirect_uris_are_refused() {
 async fn client_id_is_escaped() {
     let server = start().await;
     let path = format!(
-        "/oauth/authorize?redirect_uri={}&client_id={}",
+        "/oauth/authorize?code_challenge=abc&code_challenge_method=S256&redirect_uri={}&client_id={}",
         encode_uri_component("https://a.example/cb"),
         encode_uri_component("<script>alert(1)</script>")
     );

@@ -36,7 +36,7 @@ cargo test
 
 `tests/common/mod.rs` が偽の Discord と GitHub を立てるので、試験に秘密やネットワークは要りません。
 
-手元で動かすときは `.env.example` の必須の値を環境変数に入れ、`COOKIE_DOMAIN=` (空) と `PUBLIC_AUTH_URL=http://localhost:8080` を足して `cargo run` します。
+手元で動かすときは `.env.example` の必須の値を環境変数に入れ、`PUBLIC_AUTH_URL=http://localhost:8080` と、画面を動かす Origin を `CORS_ORIGINS` に足して `cargo run` します。
 
 ## 設定
 
@@ -46,23 +46,42 @@ cargo test
 
 GitHub Actions が、試験に通ったものだけを GHCR に置きます (linux/amd64)。タグ `v*` を打つとバージョンのタグが付きます。
 
+## セキュリティの考え方
+
+- **セッション Cookie は auth.torosaba.net だけのもの** (`__Host-`)。他のサブドメインのサーバーには渡らず、差し替えもできない。Wiki は同じサイトの fetch なので今までどおり届く
+- **Cookie で変更できるのは、信頼する Origin からだけ** (`CORS_ORIGINS` と自分自身)。他のサブドメインは信じない
+- **MCP は Bearer だけ**。mcp.torosaba.net は Cookie を見ない
+- **トークンから新しいトークンは作れない**。90 日トークンの発行と OAuth の同意は、ブラウザのセッションが要る
+- **認可コードを出すのは、本人が同意画面で承認したときだけ**。承認のリンクはセッションと要求の内容に結び付けて署名してある
+- **`client_id` を信じない**。ブランド名は戻り先のホストが本物のときだけ出し、それ以外は `UNVERIFIED` と戻り先を見せる
+- **PKCE は S256 が必須**。Google Account Linking の戻り先だけ省略できる
+- **scope を守る**。Wiki の変更には `write` か `mcp` が要る
+
+試験は `tests/security.rs`。
+
+### 知ったうえで残しているもの
+
+- トークンを個別に失効できない。全部を無効にするには `JWT_SECRET` を変える
+- `can_edit` はトークンの発行時のまま。ギルドを抜けても、トークンの期限 (30 / 90 日、リフレッシュ 180 日) までは編集できる
+- リフレッシュトークンを更新時に取り替えない。クライアントにも結び付けていない
+- 使用済みの認可コードの記録はメモリの中だけ。再起動の直後は、5 分以内のコードをもう一度使える
+- `/api/auth/logout` は GET でも動く (他のサイトのリンクでログアウトさせられるが、それ以上のことはできない)
+- 匿名の Wiki の読み取りは、サーバーの GitHub トークンの枠を使う。Cloudflare のレート制限で守る
+- 動的登録は誰でもできて、内容を保存しない。戻り先は同意画面で利用者が確かめる
+
 ## Worker 版との違い
 
-応答の形は同じですが、次の穴は塞いであります。
+応答の形は同じですが、次を変えました。
 
-- `/oauth/authorize?auto=1` や `approved=1` を付けた URL を踏ませるだけで、攻撃者の `redirect_uri` に認可コードが渡っていた → 承認のリンクに、セッションと要求の内容に結び付けた署名を入れた。Discord ログイン直後にコードを出さず、同意画面に戻す
-- `redirect_uri` に `javascript:` や他人の http のサイトを指定できた → https (手元は http)、アプリの独自スキームだけにした。同意画面に戻り先を表示する
-- ログインの `state` に署名もブラウザとの結び付きも無かった → 署名し、Cookie と照合する
-- PKCE は `code_verifier` を省略すると検査されなかった → 必須にした (challenge があるとき)
-- 認可コードを何度でも使えた → 一度だけ
-- リフレッシュトークンや認可コードを、アクセストークンとして使えた → type で区別する
-- 利用者の名前や `client_id` を HTML にそのまま埋め込んでいた → すべてエスケープする
-- Wiki のパスの `..` の検査が保存の API だけだった → 読み書きのどの入口でも検査する
-- `wiki_search` に `repo:` を混ぜると他のリポジトリの結果が見えた → このリポジトリの docs/ に絞る
-- `/api/auth/token` が GET でも発行していた → POST だけ
-
-変えたもの:
-
-- 稼働状態を外部の api.mcsrvstat.us でなく、Server List Ping で直接尋ねる
+- Discord ログイン直後にコードを出さず、同意画面に戻す。同意画面に戻り先と scope を出す
+- 上の「セキュリティの考え方」のとおり、Cookie、CORS、PKCE、scope の扱いを厳しくした
+- `redirect_uri` は https (手元は http)、アプリの独自スキームだけ
+- ログインの `state` は署名し、Cookie と照合する
+- 認可コードは一度だけ。リフレッシュトークンや認可コードをアクセストークンとして使えない
+- 値はすべて HTML エスケープする。Wiki のパスはどの入口でも `..` を断る
+- `wiki_search` の結果はこのリポジトリの docs/ に絞る
+- `/api/auth/token` は POST だけ
+- 稼働状態は外部の api.mcsrvstat.us でなく、Server List Ping で直接尋ねる
 - ロールは Bot トークンが無くても、利用者のトークン (guilds.members.read) で読む
+- mcp.torosaba.net の案内画面は、ログイン状態を表示しない (認証の管理は auth.torosaba.net)
 - 案内画面のスクリーンショットは data: URI をやめて `/_assets/` から返す

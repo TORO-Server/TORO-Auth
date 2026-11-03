@@ -76,6 +76,7 @@ async fn paths_outside_docs_never_reach_github() {
             .client
             .post(server.url("/api/docs/save"))
             .header(header::COOKIE, &cookie)
+            .header(header::ORIGIN, WIKI_ORIGIN)
             .json(&json!({ "path": bad, "content": "x" }))
             .send()
             .await
@@ -124,6 +125,7 @@ async fn save_commits_as_the_discord_user() {
         .client
         .post(server.url("/api/docs/save"))
         .header(header::COOKIE, &cookie)
+        .header(header::ORIGIN, WIKI_ORIGIN)
         .json(
             &json!({ "path": "a", "content": "新しい本文", "sha": "old-sha", "message": "直した" }),
         )
@@ -167,6 +169,7 @@ async fn save_without_sha_uses_the_latest_and_new_files_have_none() {
             .client
             .post(server.url("/api/docs/save"))
             .header(header::COOKIE, &cookie)
+            .header(header::ORIGIN, WIKI_ORIGIN)
             .json(&json!({ "path": path, "content": "x" }))
             .send()
             .await
@@ -196,6 +199,7 @@ async fn conflicts_keep_the_text_the_editor_looks_for() {
         .client
         .post(server.url("/api/docs/save"))
         .header(header::COOKIE, &cookie)
+        .header(header::ORIGIN, WIKI_ORIGIN)
         .json(&json!({ "path": "a", "content": "x", "sha": "stale" }))
         .send()
         .await

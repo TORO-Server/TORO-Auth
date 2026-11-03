@@ -9,6 +9,8 @@ pub fn escape(input: &str) -> String {
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
             '\'' => out.push_str("&#39;"),
+            // 値の中の {{KEY}} が、あとの置き換えで展開されないように
+            '{' => out.push_str("&#123;"),
             _ => out.push(c),
         }
     }

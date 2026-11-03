@@ -128,7 +128,7 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
         .await
         .unwrap();
     assert!(page.contains("TORO サーバー 外部 AI 連携システム"));
-    assert!(page.contains("Discord アカウントでログイン"));
+    assert!(page.contains("ログイン状態の確認・ログイン"));
     assert!(page.contains("/_assets/claude_settings.webp"));
     assert!(!page.contains("{{"));
 
@@ -155,27 +155,6 @@ async fn mcp_host_shows_the_guide_to_browsers_and_json_to_clients() {
 }
 
 #[tokio::test]
-async fn guide_shows_the_logged_in_user() {
-    let server = start().await;
-    let cookie = server.login("xss").await;
-    let page = server
-        .client
-        .get(server.url("/"))
-        .header(header::HOST, MCP_HOST)
-        .header(header::ACCEPT, "text/html")
-        .header(header::COOKIE, cookie)
-        .send()
-        .await
-        .unwrap()
-        .text()
-        .await
-        .unwrap();
-    assert!(page.contains("認証状態: ログイン完了"));
-    assert!(page.contains("&lt;img src=x"));
-    assert!(!page.contains("<img src=x"));
-}
-
-#[tokio::test]
 async fn mcp_host_still_serves_oauth_and_images() {
     let server = start().await;
     let on_mcp = |path: &str| {
@@ -194,7 +173,7 @@ async fn mcp_host_still_serves_oauth_and_images() {
         .unwrap();
     assert_eq!(meta["resource"], "https://mcp.torosaba.net");
 
-    let res = on_mcp("/oauth/authorize?redirect_uri=https%3A%2F%2Fa.example%2F")
+    let res = on_mcp("/oauth/authorize?code_challenge=abc&code_challenge_method=S256&redirect_uri=https%3A%2F%2Fa.example%2F")
         .send()
         .await
         .unwrap();

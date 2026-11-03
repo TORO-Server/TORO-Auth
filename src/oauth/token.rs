@@ -107,18 +107,15 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     )
 }
 
-/// PKCE。コードに challenge があるなら、verifier は省略できない
+/// PKCE。S256 だけ。challenge と verifier は、そろっているか、どちらも無いか (省略は認可の段階で限ってある)
 fn pkce_ok(code: &Claims, verifier: Option<&str>) -> bool {
-    let Some(challenge) = claim(code, "code_challenge") else {
-        return true;
-    };
-    let Some(verifier) = verifier else {
-        return false;
-    };
-    match claim(code, "code_challenge_method") {
-        Some("S256") => sha256_base64url(verifier.as_bytes()) == challenge,
-        Some("plain") | None => verifier == challenge,
-        Some(_) => false,
+    match (claim(code, "code_challenge"), verifier) {
+        (Some(challenge), Some(verifier)) => {
+            claim(code, "code_challenge_method") == Some("S256")
+                && sha256_base64url(verifier.as_bytes()) == challenge
+        }
+        (None, None) => true,
+        _ => false,
     }
 }
 
@@ -248,10 +245,12 @@ mod tests {
         assert!(!pkce_ok(&s256, Some("wrong")));
         assert!(!pkce_ok(&s256, None));
 
-        let plain = claims(json!({ "code_challenge": "abc" }));
-        assert!(pkce_ok(&plain, Some("abc")));
-        assert!(!pkce_ok(&plain, Some("abd")));
+        // plain は受け付けない
+        let plain = claims(json!({ "code_challenge": "abc", "code_challenge_method": "plain" }));
+        assert!(!pkce_ok(&plain, Some("abc")));
 
+        // challenge の無いコードに verifier を送ってきたら、すり替えの疑い
+        assert!(!pkce_ok(&claims(json!({})), Some("x")));
         assert!(pkce_ok(&claims(json!({})), None));
     }
 }

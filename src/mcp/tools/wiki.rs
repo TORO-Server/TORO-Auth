@@ -54,9 +54,9 @@ pub async fn save_page(app: &App, args: &Value, session: Option<&Session>) -> Va
             "認証エラー: Wiki の保存・編集を行うには Discord 認証が必要です。認可フローを完了させてください。",
         );
     };
-    if !user.can_edit() {
+    if !user.can_write() {
         return failure(&format!(
-            "権限エラー: ユーザー \"{}\" には TORO Server Wiki の編集権限（メンバーシップ）がありません。",
+            "権限エラー: ユーザー \"{}\" には TORO Server Wiki の編集権限（メンバーシップと write の許可）がありません。",
             user.username()
         ));
     }

@@ -17,6 +17,7 @@ use toro_auth::config::Config;
 
 pub const GUILD: &str = "000000000000000000";
 pub const JWT_SECRET: &str = "test-secret-test-secret-test-secret";
+pub const WIKI_ORIGIN: &str = "https://wiki.torosaba.net";
 
 async fn spawn(router: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -179,7 +180,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         port: 0,
         issuer: base.clone(),
         mcp_url: "https://mcp.torosaba.net".into(),
-        cookie_domain: String::new(),
+        cors_origins: vec![WIKI_ORIGIN.into()],
         jwt_secret: JWT_SECRET.into(),
         discord_client_id: "client".into(),
         discord_client_secret: "secret".into(),
@@ -273,7 +274,7 @@ impl TestServer {
             .await;
         assert_eq!(start.status(), 302);
         let state = query_param(&location(&start), "state").unwrap();
-        let nonce = cookie_pair(&set_cookies(&start), "toro_login_nonce").unwrap();
+        let nonce = cookie_pair(&set_cookies(&start), "__Host-toro_login_nonce").unwrap();
 
         let callback = self
             .get_with_cookie(
@@ -285,7 +286,7 @@ impl TestServer {
             )
             .await;
         assert_eq!(callback.status(), 302, "callback for {code}");
-        let cookie = cookie_pair(&set_cookies(&callback), "toro_session").unwrap();
+        let cookie = cookie_pair(&set_cookies(&callback), "__Host-toro_session").unwrap();
         (cookie, location(&callback))
     }
 

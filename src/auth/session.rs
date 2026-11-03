@@ -1,10 +1,18 @@
 //! セッションの取り出しと Cookie
+//!
+//! セッション Cookie は auth.torosaba.net だけのもの (`__Host-` で Domain を付けられなくしてある)。
+//! 他のサブドメインのサーバーには渡らず、他のサブドメインから差し替えることもできない。
+//!
+//! どこから取り出すかは、用途で使い分ける:
+//! - `from_bearer`: MCP など API のクライアント
+//! - `from_cookie`: ブラウザでの読み取りと、同意の画面
+//! - `from_cookie_for_write`: ブラウザでの変更 (Origin を確かめる。CSRF 対策)
+//! - `from_request` / `for_write`: Wiki の API のように、どちらも受け付けるもの
 
 use axum::http::header;
 use serde_json::{Map, Value};
 
 use crate::App;
-use crate::config::Config;
 use crate::http::Ctx;
 use crate::jwt::{self, Claims};
 use crate::util::encode_uri_component;
@@ -13,7 +21,11 @@ use crate::util::encode_uri_component;
 /// ブラウザのセッションと 90 日トークンには type が無い
 pub const ACCESS_TOKEN_TYPE: &str = "mcp_access_token";
 
-const COOKIE_NAMES: [&str; 2] = ["toro_session", "wiki_session"];
+pub const SESSION_COOKIE: &str = "__Host-toro_session";
+const SESSION_MAX_AGE: i64 = 30 * 86400;
+const COOKIE_ATTRIBUTES: &str = "Path=/; HttpOnly; Secure; SameSite=Lax";
+/// Worker 版が .torosaba.net に置いた Cookie。古いトークンをブラウザに残さないよう消す
+const LEGACY_COOKIES: [&str; 2] = ["toro_session", "wiki_session"];
 
 pub struct Session {
     pub claims: Map<String, Value>,
@@ -40,6 +52,15 @@ impl Session {
             .get("can_edit")
             .and_then(Value::as_bool)
             .unwrap_or(false)
+    }
+
+    /// Wiki を変更してよいか。OAuth のトークンは、許可された scope (write か mcp) の中だけ
+    pub fn can_write(&self) -> bool {
+        let scope_allows = match self.claims.get("scope").and_then(Value::as_str) {
+            Some(scope) => scope.split_whitespace().any(|s| s == "write" || s == "mcp"),
+            None => true,
+        };
+        self.can_edit() && scope_allows
     }
 
     pub fn role_count(&self) -> usize {
@@ -81,14 +102,35 @@ pub fn bearer_token(ctx: &Ctx) -> Option<&str> {
         .map(str::trim)
 }
 
-/// Authorization: Bearer、次に Cookie の順に調べる
-pub fn from_request(app: &App, ctx: &Ctx) -> Option<Session> {
-    if let Some(session) = bearer_token(ctx).and_then(|t| session_from_token(app, t)) {
-        return Some(session);
+pub fn from_bearer(app: &App, ctx: &Ctx) -> Option<Session> {
+    bearer_token(ctx).and_then(|token| session_from_token(app, token))
+}
+
+/// ブラウザのセッション。API 用のトークンを Cookie に入れても通さない
+pub fn from_cookie(app: &App, ctx: &Ctx) -> Option<Session> {
+    let token = cookie(ctx.header(header::COOKIE), SESSION_COOKIE)?;
+    let session = session_from_token(app, &token)?;
+    let is_browser_session =
+        !session.claims.contains_key("type") && !session.claims.contains_key("purpose");
+    is_browser_session.then_some(session)
+}
+
+/// ブラウザからの変更。Cookie は他のサブドメインからのリクエストにも付くので、送り元を確かめる
+pub fn from_cookie_for_write(app: &App, ctx: &Ctx) -> Option<Session> {
+    if !ctx.origin_trusted {
+        return None;
     }
-    let cookies = ctx.header(header::COOKIE);
-    let token = COOKIE_NAMES.iter().find_map(|name| cookie(cookies, name))?;
-    session_from_token(app, &token)
+    from_cookie(app, ctx)
+}
+
+/// 読み取り: Authorization: Bearer、次に Cookie
+pub fn from_request(app: &App, ctx: &Ctx) -> Option<Session> {
+    from_bearer(app, ctx).or_else(|| from_cookie(app, ctx))
+}
+
+/// 変更: Authorization: Bearer、次に送り元を確かめた Cookie
+pub fn for_write(app: &App, ctx: &Ctx) -> Option<Session> {
+    from_bearer(app, ctx).or_else(|| from_cookie_for_write(app, ctx))
 }
 
 pub fn cookie(header_value: &str, name: &str) -> Option<String> {
@@ -113,36 +155,25 @@ fn percent_decode(value: &str) -> String {
         .unwrap_or_default()
 }
 
-fn domain_part(cfg: &Config) -> String {
-    match cfg.cookie_domain.as_str() {
-        "" => String::new(),
-        domain => format!("; Domain={domain}"),
-    }
+fn legacy_cookie_removals() -> impl Iterator<Item = String> {
+    LEGACY_COOKIES
+        .iter()
+        .map(|name| format!("{name}=; {COOKIE_ATTRIBUTES}; Max-Age=0; Domain=.torosaba.net"))
 }
 
 /// 30 日のセッション Cookie
-pub fn session_cookies(cfg: &Config, token: &str) -> Vec<String> {
+pub fn session_cookies(token: &str) -> Vec<String> {
     let token = encode_uri_component(token);
-    COOKIE_NAMES
-        .iter()
-        .map(|name| {
-            format!(
-                "{name}={token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000{}",
-                domain_part(cfg)
-            )
-        })
-        .collect()
+    std::iter::once(format!(
+        "{SESSION_COOKIE}={token}; {COOKIE_ATTRIBUTES}; Max-Age={SESSION_MAX_AGE}"
+    ))
+    .chain(legacy_cookie_removals())
+    .collect()
 }
 
-pub fn logout_cookies(cfg: &Config) -> Vec<String> {
-    COOKIE_NAMES
-        .iter()
-        .map(|name| {
-            format!(
-                "{name}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0{}",
-                domain_part(cfg)
-            )
-        })
+pub fn logout_cookies() -> Vec<String> {
+    std::iter::once(format!("{SESSION_COOKIE}=; {COOKIE_ATTRIBUTES}; Max-Age=0"))
+        .chain(legacy_cookie_removals())
         .collect()
 }
 
@@ -157,5 +188,18 @@ mod tests {
         assert_eq!(cookie(header, "other").as_deref(), Some("x=y"));
         assert_eq!(cookie(header, "session"), None);
         assert_eq!(cookie("toro_session=", "toro_session"), None);
+    }
+
+    #[test]
+    fn write_needs_edit_permission_and_scope() {
+        let session = |claims: Value| Session {
+            claims: claims.as_object().unwrap().clone(),
+        };
+        use serde_json::json;
+        assert!(session(json!({ "can_edit": true })).can_write());
+        assert!(session(json!({ "can_edit": true, "scope": "read write" })).can_write());
+        assert!(session(json!({ "can_edit": true, "scope": "mcp" })).can_write());
+        assert!(!session(json!({ "can_edit": true, "scope": "read" })).can_write());
+        assert!(!session(json!({ "can_edit": false, "scope": "write" })).can_write());
     }
 }

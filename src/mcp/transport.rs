@@ -35,7 +35,7 @@ pub async fn handle(app: &App, ctx: &Ctx) -> Response {
 }
 
 fn handle_get(app: &App, ctx: &Ctx) -> Response {
-    let session = session::from_request(app, ctx);
+    let session = session::from_bearer(app, ctx);
     let accept = ctx.header(header::ACCEPT);
     let path = ctx.path.as_str();
     let is_dedicated_path = path == "/mcp"
@@ -45,8 +45,12 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
     let wants_json = accept.contains("application/json") || ctx.q("format") == Some("json");
 
     if !is_dedicated_path && !wants_json && accept.contains("text/html") {
-        let page = guide::render_page(session.as_ref());
-        return http::respond(200, http::public_headers(), http::HTML_UTF8, page);
+        return http::respond(
+            200,
+            http::public_headers(),
+            http::HTML_UTF8,
+            guide::render_page(),
+        );
     }
 
     if accept.contains("text/event-stream") {
@@ -79,13 +83,20 @@ fn handle_get(app: &App, ctx: &Ctx) -> Response {
     )
 }
 
-/// 接続先を伝えたあとは、客が切るまで開けたままにする
+/// 接続先を伝えたあとは、客が切るまで開けたままにする。開けておける数には上限がある
 fn sse(app: &App) -> Response {
+    let Ok(permit) = app.sse_streams.clone().try_acquire_owned() else {
+        return http::busy();
+    };
     let endpoint = Event::default()
         .event("endpoint")
         .data(format!("{}/mcp", app.cfg.mcp_url));
-    let events =
-        stream::once(async move { Ok::<_, Infallible>(endpoint) }).chain(stream::pending());
+    let events = stream::once(async move { Ok::<_, Infallible>(endpoint) })
+        .chain(stream::pending())
+        .map(move |event| {
+            let _held_until_disconnect = &permit;
+            event
+        });
     let mut res = Sse::new(events)
         .keep_alive(KeepAlive::default())
         .into_response();
@@ -138,7 +149,8 @@ async fn handle_rpc(app: &App, ctx: &Ctx) -> Response {
                 .get("arguments")
                 .filter(|a| a.is_object())
                 .unwrap_or(&empty);
-            let session = session::from_request(app, ctx);
+            // MCP のクライアントは Bearer を使う。Cookie を見ないので、ブラウザからの CSRF は成り立たない
+            let session = session::from_bearer(app, ctx);
             reply(tools::call(app, name, args, session.as_ref()).await)
         }
         "ping" => reply(json!({})),

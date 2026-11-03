@@ -6,6 +6,7 @@ use crate::template::{insert_block, render};
 pub struct Consent<'a> {
     pub client_name: &'a str,
     pub redirect_target: &'a str,
+    pub scope: &'a str,
     pub session: Option<&'a Session>,
     pub login_url: &'a str,
     /// ログイン済みのときだけある
@@ -45,6 +46,7 @@ pub fn consent(options: &Consent) -> String {
         &[
             ("CLIENT_NAME", options.client_name),
             ("REDIRECT_TARGET", options.redirect_target),
+            ("SCOPE", options.scope),
         ],
     );
     insert_block(&page, "USER_SECTION", &section)

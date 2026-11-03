@@ -39,14 +39,14 @@ pub async fn raw(app: &App, ctx: &Ctx) -> Response {
 
 /// POST /api/docs/save
 pub async fn save(app: &App, ctx: &Ctx) -> Response {
-    let Some(user) = session::from_request(app, ctx) else {
+    let Some(user) = session::for_write(app, ctx) else {
         return http::error(
             ctx,
             "Authentication required (please login with Discord)",
             401,
         );
     };
-    if !user.can_edit() {
+    if !user.can_write() {
         return http::error(
             ctx,
             "You do not have permission to edit wiki documents",

@@ -34,51 +34,6 @@ async fn login_sets_session_and_returns_to_the_requested_page() {
 }
 
 #[tokio::test]
-async fn session_cookies_have_expected_attributes() {
-    let server = start_with(|cfg| cfg.cookie_domain = ".torosaba.net".into()).await;
-    let start = server.get("/api/auth/login").await;
-    let state = query_param(&location(&start), "state").unwrap();
-    let nonce = cookie_pair(&set_cookies(&start), "toro_login_nonce").unwrap();
-    let res = server
-        .get_with_cookie(
-            &format!(
-                "/api/auth/callback?code=member&state={}",
-                encode_uri_component(&state)
-            ),
-            &nonce,
-        )
-        .await;
-
-    let cookies = set_cookies(&res);
-    for name in ["toro_session", "wiki_session"] {
-        let cookie = cookies.iter().find(|c| c.starts_with(name)).unwrap();
-        assert!(cookie.ends_with(
-            "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000; Domain=.torosaba.net"
-        ));
-    }
-    // ログインに使った Cookie は消す
-    assert!(
-        cookies
-            .iter()
-            .any(|c| c.starts_with("toro_login_nonce=;") && c.contains("Max-Age=0"))
-    );
-}
-
-#[tokio::test]
-async fn wiki_session_cookie_is_also_accepted() {
-    let server = start().await;
-    let cookie = server.login("member").await;
-    let renamed = cookie.replace("toro_session=", "wiki_session=");
-    let me: Value = server
-        .get_with_cookie("/api/auth/me", &renamed)
-        .await
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(me["authenticated"], true);
-}
-
-#[tokio::test]
 async fn foreign_return_urls_fall_back_to_the_wiki() {
     let server = start().await;
     for bad in [
@@ -104,12 +59,12 @@ async fn callback_requires_the_browser_that_started_the_login() {
     assert!(
         set_cookies(&res)
             .iter()
-            .all(|c| !c.starts_with("toro_session"))
+            .all(|c| !c.starts_with("__Host-toro_session"))
     );
 
     // 別のログインの Cookie
     let res = server
-        .get_with_cookie(&path, "toro_login_nonce=other")
+        .get_with_cookie(&path, "__Host-toro_login_nonce=other")
         .await;
     assert_eq!(res.status(), 400);
 }
@@ -127,7 +82,7 @@ async fn callback_rejects_forged_state() {
                 "/api/auth/callback?code=member&state={}",
                 encode_uri_component(&forged)
             ),
-            "toro_login_nonce=n",
+            "__Host-toro_login_nonce=n",
         )
         .await;
     assert_eq!(res.status(), 400);
@@ -138,7 +93,7 @@ async fn non_members_are_refused() {
     let server = start().await;
     let start = server.get("/api/auth/login").await;
     let state = encode_uri_component(&query_param(&location(&start), "state").unwrap());
-    let nonce = cookie_pair(&set_cookies(&start), "toro_login_nonce").unwrap();
+    let nonce = cookie_pair(&set_cookies(&start), "__Host-toro_login_nonce").unwrap();
 
     let res = server
         .get_with_cookie(
@@ -150,7 +105,7 @@ async fn non_members_are_refused() {
     assert!(
         set_cookies(&res)
             .iter()
-            .all(|c| !c.starts_with("toro_session"))
+            .all(|c| !c.starts_with("__Host-toro_session"))
     );
     assert!(res.text().await.unwrap().contains("ギルド未所属"));
 }
@@ -160,7 +115,7 @@ async fn discord_exchange_failure_is_reported() {
     let server = start().await;
     let start = server.get("/api/auth/login").await;
     let state = encode_uri_component(&query_param(&location(&start), "state").unwrap());
-    let nonce = cookie_pair(&set_cookies(&start), "toro_login_nonce").unwrap();
+    let nonce = cookie_pair(&set_cookies(&start), "__Host-toro_login_nonce").unwrap();
 
     let res = server
         .get_with_cookie(
@@ -225,7 +180,7 @@ async fn logout_clears_cookies_in_both_formats() {
     assert!(
         set_cookies(&res)
             .iter()
-            .any(|c| c.starts_with("toro_session=;") && c.contains("Max-Age=0"))
+            .any(|c| c.starts_with("__Host-toro_session=;") && c.contains("Max-Age=0"))
     );
     assert_eq!(res.json::<Value>().await.unwrap()["ok"], true);
 
@@ -272,6 +227,7 @@ async fn api_token_requires_post_and_session() {
         .client
         .post(server.url("/api/auth/token"))
         .header(header::COOKIE, &cookie)
+        .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
         .await
         .unwrap();

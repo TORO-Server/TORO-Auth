@@ -7,8 +7,8 @@ pub struct Config {
     pub issuer: String,
     /// MCP サーバーの公開 URL (末尾の / なし)
     pub mcp_url: String,
-    /// セッション Cookie の Domain。空なら付けない (手元の試験用)
-    pub cookie_domain: String,
+    /// Cookie 付きで API を呼べる Origin (他のサブドメインは信じない)
+    pub cors_origins: Vec<String>,
 
     pub jwt_secret: String,
 
@@ -45,6 +45,11 @@ fn trimmed(name: &str, default: &str) -> String {
 }
 
 impl Config {
+    /// Cookie 付きのリクエストを受けてよい送り元か (自分自身と、指定の Origin)
+    pub fn is_trusted_origin(&self, origin: &str) -> bool {
+        origin == self.issuer || self.cors_origins.iter().any(|o| o == origin)
+    }
+
     pub fn from_env() -> Result<Self, String> {
         let mut missing = Vec::new();
         let mut required = |name: &'static str| {
@@ -77,8 +82,11 @@ impl Config {
             ),
             issuer,
             mcp_url: trimmed("PUBLIC_MCP_URL", "https://mcp.torosaba.net"),
-            cookie_domain: std::env::var("COOKIE_DOMAIN")
-                .unwrap_or_else(|_| ".torosaba.net".into()),
+            cors_origins: or_default("CORS_ORIGINS", "https://wiki.torosaba.net")
+                .split(',')
+                .map(|origin| origin.trim().to_string())
+                .filter(|origin| !origin.is_empty())
+                .collect(),
             jwt_secret,
             discord_client_id: or_default("DISCORD_CLIENT_ID", "0000000000000000000"),
             discord_client_secret,

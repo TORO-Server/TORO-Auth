@@ -19,7 +19,7 @@ pub fn me(app: &App, ctx: &Ctx) -> Response {
     http::json(ctx, &body, 200)
 }
 
-pub fn logout(app: &App, ctx: &Ctx) -> Response {
+pub fn logout(ctx: &Ctx) -> Response {
     let mut res = if ctx.accepts_html() {
         http::html(
             include_str!("../../assets/auth/logout.html").to_string(),
@@ -32,15 +32,16 @@ pub fn logout(app: &App, ctx: &Ctx) -> Response {
             200,
         )
     };
-    http::append_cookies(&mut res, &session::logout_cookies(&app.cfg));
+    http::append_cookies(&mut res, &session::logout_cookies());
     res
 }
 
+/// 90 日トークンの発行。本人のブラウザからだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)
 pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     if ctx.method != Method::POST {
         return http::error(ctx, "Method Not Allowed", 405);
     }
-    let Some(session) = session::from_request(app, ctx) else {
+    let Some(session) = session::from_cookie_for_write(app, ctx) else {
         return http::error(ctx, "Authentication required to generate API token", 401);
     };
 

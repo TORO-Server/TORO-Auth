@@ -1,5 +1,6 @@
 //! auth.torosaba.net のトップページ
 
+use axum::http::header::{self, HeaderValue};
 use axum::response::Response;
 
 use crate::App;
@@ -8,7 +9,7 @@ use crate::http::{self, Ctx};
 use crate::template::{insert_block, render};
 
 pub fn handle(app: &App, ctx: &Ctx) -> Response {
-    let session = session::from_request(app, ctx);
+    let session = session::from_cookie(app, ctx);
     let (link, label) = match session {
         Some(_) => ("/api/auth/logout", "LOGOUT"),
         None => ("/api/auth/login", "LOGIN"),
@@ -21,7 +22,13 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         || include_str!("../assets/home/guest.html").to_string(),
         session_block,
     );
-    http::html(insert_block(&page, "USER_BLOCK", &block), 200)
+    let mut res = http::html(insert_block(&page, "USER_BLOCK", &block), 200);
+    // トークン発行のボタンがあるので、枠に入れさせない
+    res.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("frame-ancestors 'none'"),
+    );
+    res
 }
 
 fn session_block(session: &Session) -> String {

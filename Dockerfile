@@ -4,7 +4,7 @@
 #
 # musl で静的にリンクして scratch に載せる。CA 証明書はバイナリに埋め込んである (webpki-roots)
 
-FROM rust:1.98-alpine AS compile
+FROM rust:1.98-alpine@sha256:7cc1c22d77d9432f7fe012a70e6d3e555af54c2a6832700ed7d553f1769ae89f AS compile
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 # 依存だけを先にビルドして、ソースだけを変えたときのビルドを速くする

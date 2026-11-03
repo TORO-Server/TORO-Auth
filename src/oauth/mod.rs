@@ -3,11 +3,13 @@
 //! - `metadata`: 発見用のメタデータ (RFC 8414 / RFC 9728)
 //! - `register`: 動的クライアント登録 (RFC 7591)
 //! - `authorize`: 認可エンドポイントと同意の流れ
+//! - `client`: クライアントの見分け方と、戻り先の検査
 //! - `pages`: 同意画面などの HTML
 //! - `token`: トークンエンドポイント
 //! - `userinfo`: OIDC UserInfo
 
 pub mod authorize;
+pub mod client;
 pub mod metadata;
 pub mod pages;
 pub mod register;

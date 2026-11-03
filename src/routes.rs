@@ -14,22 +14,27 @@ use crate::http::{self, Ctx};
 use crate::{App, auth, home, mcp, oauth, openapi, static_files, wiki};
 
 const MCP_HOST: &str = "mcp.torosaba.net";
-const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn router(app: Arc<App>) -> Router {
     Router::new().fallback(dispatch).with_state(app)
 }
 
 async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
+    // 同時に処理する数を限り、ボディの分も含めてメモリの使用量に上限を設ける
+    let Ok(_permit) = app.requests.try_acquire() else {
+        return http::busy();
+    };
+
     let (parts, body) = request.into_parts();
     let body = match to_bytes(body, MAX_BODY_BYTES).await {
         Ok(body) => body,
         Err(_) => {
-            let ctx = Ctx::new(&parts, Default::default());
+            let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
             return http::json(&ctx, &json!({ "error": "Payload Too Large" }), 413);
         }
     };
-    let ctx = Ctx::new(&parts, body);
+    let ctx = Ctx::new(&parts, body, &app.cfg);
 
     let mut res = match route(&app, &ctx).await {
         Ok(res) => res,
@@ -42,10 +47,15 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
             )
         }
     };
-    res.headers_mut().insert(
+    let headers = res.headers_mut();
+    headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
+    // 利用者ごとに違う応答を Cloudflare にためさせない。ためてよいものは、自分で Cache-Control を付ける
+    headers
+        .entry(header::CACHE_CONTROL)
+        .or_insert(HeaderValue::from_static("no-store"));
     res
 }
 
@@ -95,7 +105,7 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
         "/api/auth/login" => Ok(auth::login::start(app, ctx)),
         "/api/auth/callback" => auth::login::callback(app, ctx).await,
         "/api/auth/me" => Ok(auth::account::me(app, ctx)),
-        "/api/auth/logout" => Ok(auth::account::logout(app, ctx)),
+        "/api/auth/logout" => Ok(auth::account::logout(ctx)),
         "/api/auth/token" => Ok(auth::account::issue_token(app, ctx)),
 
         "/api/docs/raw" => Ok(wiki::api::raw(app, ctx).await),

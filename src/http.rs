@@ -6,8 +6,9 @@ use axum::http::request::Parts;
 use axum::http::{Method, StatusCode};
 use axum::response::Response;
 use serde_json::{Value, json};
-use url::{Url, form_urlencoded};
+use url::form_urlencoded;
 
+use crate::config::Config;
 use crate::template;
 use crate::util::{is_loopback_host, is_toro_host};
 
@@ -19,18 +20,26 @@ pub struct Ctx {
     pub headers: HeaderMap,
     /// ポートを除いた小文字のホスト名
     pub host: String,
+    /// Origin が、Cookie 付きのリクエストを受けてよい送り元か
+    pub origin_trusted: bool,
     pub body: Bytes,
 }
 
 impl Ctx {
-    pub fn new(parts: &Parts, body: Bytes) -> Self {
+    pub fn new(parts: &Parts, body: Bytes, cfg: &Config) -> Self {
         let query = parts.uri.query().unwrap_or("");
         let host = parts
             .headers
             .get(header::HOST)
             .and_then(|h| h.to_str().ok())
             .unwrap_or("");
+        let origin = parts
+            .headers
+            .get(header::ORIGIN)
+            .and_then(|h| h.to_str().ok())
+            .unwrap_or("");
         Self {
+            origin_trusted: cfg.is_trusted_origin(origin),
             method: parts.method.clone(),
             path: parts.uri.path().to_string(),
             query: form_urlencoded::parse(query.as_bytes())
@@ -76,21 +85,11 @@ impl Ctx {
     }
 }
 
-pub fn is_allowed_origin(origin: &str) -> bool {
-    Url::parse(origin)
-        .ok()
-        .and_then(|u| {
-            u.host_str()
-                .map(|h| is_toro_host(h) || h == "localhost" || h == "127.0.0.1")
-        })
-        .unwrap_or(false)
-}
-
 pub fn cors_headers(ctx: &Ctx) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    let origin = ctx.header(header::ORIGIN);
-    match HeaderValue::from_str(origin) {
-        Ok(value) if is_allowed_origin(origin) => {
+    headers.insert(header::VARY, HeaderValue::from_static("Origin"));
+    match HeaderValue::from_str(ctx.header(header::ORIGIN)) {
+        Ok(value) if ctx.origin_trusted => {
             headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
             headers.insert(
                 header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
@@ -172,6 +171,18 @@ pub fn error(ctx: &Ctx, message: &str, status: u16) -> Response {
     json(ctx, &json!({ "error": message }), status)
 }
 
+/// 同時に受けられる数を超えたとき
+pub fn busy() -> Response {
+    let mut headers = public_headers();
+    headers.insert(header::RETRY_AFTER, HeaderValue::from_static("5"));
+    respond(
+        503,
+        headers,
+        JSON_UTF8,
+        json!({ "error": "Service Unavailable" }).to_string(),
+    )
+}
+
 pub fn no_content(headers: HeaderMap) -> Response {
     let mut res = Response::new(Body::empty());
     *res.status_mut() = StatusCode::NO_CONTENT;
@@ -209,18 +220,5 @@ pub fn public_origin(ctx: &Ctx, fallback: &str) -> String {
         format!("http://{host}")
     } else {
         fallback.to_string()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn origin_allow_list() {
-        assert!(is_allowed_origin("https://wiki.torosaba.net"));
-        assert!(is_allowed_origin("http://localhost:4200"));
-        assert!(!is_allowed_origin("https://torosaba.net.evil.example"));
-        assert!(!is_allowed_origin(""));
     }
 }

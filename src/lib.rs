@@ -27,10 +27,16 @@ pub mod util;
 pub mod wiki;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use config::Config;
+use tokio::sync::Semaphore;
+
+/// 同時に処理するリクエストの上限 (ボディは最大 2 MiB なので、メモリは約 512 MiB まで)
+const MAX_CONCURRENT_REQUESTS: usize = 256;
+/// 開けたままにできる SSE の上限
+pub const MAX_SSE_STREAMS: usize = 128;
 
 /// リクエストをまたいで共有するもの
 pub struct App {
@@ -38,6 +44,8 @@ pub struct App {
     pub http: reqwest::Client,
     /// 使い終わった認可コードの jti と有効期限 (再利用を断るため)
     pub used_codes: Mutex<HashMap<String, i64>>,
+    pub requests: Semaphore,
+    pub sse_streams: Arc<Semaphore>,
 }
 
 impl App {
@@ -51,6 +59,8 @@ impl App {
             cfg,
             http,
             used_codes: Mutex::new(HashMap::new()),
+            requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),
+            sse_streams: Arc::new(Semaphore::new(MAX_SSE_STREAMS)),
         })
     }
 }

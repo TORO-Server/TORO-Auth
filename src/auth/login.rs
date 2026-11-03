@@ -19,7 +19,7 @@ const STATE_TYPE: &str = "login_state";
 const STATE_LIFETIME: i64 = 600;
 const SESSION_LIFETIME: i64 = 30 * 86400;
 /// ログインを始めたブラウザと、戻ってきたブラウザが同じかを確かめる Cookie
-const NONCE_COOKIE: &str = "toro_login_nonce";
+const NONCE_COOKIE: &str = "__Host-toro_login_nonce";
 
 /// ログイン後に戻してよい先だけを通す
 pub fn safe_return_url(target: &str) -> Option<String> {
@@ -34,9 +34,7 @@ pub fn safe_return_url(target: &str) -> Option<String> {
 }
 
 fn nonce_cookie(value: &str, max_age: i64) -> String {
-    format!(
-        "{NONCE_COOKIE}={value}; Path=/api/auth/callback; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age}"
-    )
+    format!("{NONCE_COOKIE}={value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age={max_age}")
 }
 
 pub fn start(app: &App, ctx: &Ctx) -> Response {
@@ -142,7 +140,7 @@ pub async fn callback(app: &App, ctx: &Ctx) -> Result<Response, String> {
     );
 
     let mut res = http::redirect(&return_to);
-    let mut cookies = session::session_cookies(&app.cfg, &token);
+    let mut cookies = session::session_cookies(&token);
     cookies.push(nonce_cookie("", 0));
     http::append_cookies(&mut res, &cookies);
     Ok(res)

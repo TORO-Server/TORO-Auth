@@ -9,61 +9,30 @@ use axum::response::Response;
 use serde_json::{Map, Value, json};
 use url::Url;
 
-use super::{CODE_TYPE, DEFAULT_SCOPE, pages};
+use super::{CODE_TYPE, DEFAULT_SCOPE, client, pages};
 use crate::App;
 use crate::auth::session::{self, Session};
 use crate::http::{self, Ctx};
 use crate::jwt;
-use crate::util::{encode_uri_component, is_loopback_host, random_hex, sha256_base64url};
+use crate::util::{encode_uri_component, random_hex, sha256_base64url};
 
+const CSP_LOGIN: &str =
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+const CSP_WITH_APPROVE: &str = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const CONSENT_TYPE: &str = "oauth_consent";
 const CONSENT_LIFETIME: i64 = 600;
 const CODE_LIFETIME: i64 = 300;
 /// 同意の流れの中で付ける値。ログイン後に戻る URL などからは取り除く
 const FLOW_PARAMS: [&str; 5] = ["consent", "approved", "auto", "denied", "deny"];
 
-/// クライアントへの戻り先として受け付ける URI か。
-/// ウェブは https (手元は http も)、デスクトップアプリの独自スキームも通す
-pub fn is_valid_redirect_uri(uri: &str) -> bool {
-    let Ok(url) = Url::parse(uri) else {
-        return false;
-    };
-    if url.fragment().is_some() {
-        return false;
-    }
-    match url.scheme() {
-        "https" => true,
-        "http" => url.host_str().is_some_and(is_loopback_host),
-        "javascript" | "data" | "vbscript" | "file" | "about" | "blob" | "ftp" | "ws" | "wss" => {
-            false
-        }
-        _ => true,
-    }
-}
-
-/// 利用者に見せる戻り先
-fn redirect_target_label(uri: &str) -> String {
-    match Url::parse(uri) {
-        Ok(url) => match url.host_str() {
-            Some(host) => format!("{}://{host}", url.scheme()),
-            None => format!("{}:", url.scheme()),
-        },
-        Err(_) => uri.to_string(),
-    }
-}
-
-fn client_display_name(client_id: &str, redirect_uri: &str) -> String {
-    if client_id.contains("gemini") || redirect_uri.contains("google") {
-        "Google Gemini".into()
-    } else if client_id.contains("claude") || redirect_uri.contains("claude") {
-        "Claude".into()
-    } else if client_id.contains("chatgpt")
-        || redirect_uri.contains("openai")
-        || redirect_uri.contains("chatgpt")
-    {
-        "ChatGPT".into()
-    } else {
-        client_id.to_string()
+/// PKCE の要求が受け付けられるなら None、断るなら理由
+fn pkce_problem(ctx: &Ctx, redirect_uri: &str) -> Option<&'static str> {
+    let challenge = ctx.q("code_challenge").filter(|c| !c.is_empty());
+    match (challenge, ctx.q("code_challenge_method")) {
+        (Some(_), Some("S256")) => None,
+        (Some(_), _) => Some("Query parameter \"code_challenge_method\" must be S256"),
+        (None, _) if client::may_omit_pkce(redirect_uri) => None,
+        (None, _) => Some("PKCE is required: send \"code_challenge\" with method S256"),
     }
 }
 
@@ -144,13 +113,12 @@ fn issue_code(
     if let Some(state) = ctx.q("state").filter(|s| !s.is_empty()) {
         set_param(&mut target, "state", state);
     }
-    let mut res = http::redirect(target.as_str());
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    res
+    // RFC 9207: どの認可サーバーからの応答かを示す (mix-up 対策)
+    set_param(&mut target, "iss", &app.cfg.issuer);
+    http::redirect(target.as_str())
 }
 
-fn denied_page(ctx: &Ctx, client_name: &str, redirect_uri: &str) -> Response {
+fn denied_page(app: &App, ctx: &Ctx, client_name: &str, redirect_uri: &str) -> Response {
     let client_return = Url::parse(redirect_uri).ok().map(|mut url| {
         set_param(&mut url, "error", "access_denied");
         set_param(
@@ -161,6 +129,7 @@ fn denied_page(ctx: &Ctx, client_name: &str, redirect_uri: &str) -> Response {
         if let Some(state) = ctx.q("state").filter(|s| !s.is_empty()) {
             set_param(&mut url, "state", state);
         }
+        set_param(&mut url, "iss", &app.cfg.issuer);
         url.to_string()
     });
     let retry_url = format!("/oauth/authorize?{}", ctx.query_without(&FLOW_PARAMS));
@@ -178,19 +147,23 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
             400,
         );
     };
-    if !is_valid_redirect_uri(redirect_uri) {
+    if !client::is_valid_redirect_uri(redirect_uri) {
         return http::html(
             pages::invalid_request("Query parameter \"redirect_uri\" is not allowed"),
             400,
         );
     }
-    let client_name = client_display_name(client_id, redirect_uri);
+    if let Some(problem) = pkce_problem(ctx, redirect_uri) {
+        return http::html(pages::invalid_request(problem), 400);
+    }
+    let client_name = client::display_name(client_id, redirect_uri);
 
     if ctx.q("denied") == Some("1") || ctx.q("deny") == Some("1") {
-        return denied_page(ctx, &client_name, redirect_uri);
+        return denied_page(app, ctx, &client_name, redirect_uri);
     }
 
-    let session = session::from_request(app, ctx);
+    // 本人がブラウザで操作しているときだけ。Bearer のトークンでは新しいコードを出さない
+    let session = session::from_cookie(app, ctx);
     if let Some(session) = &session
         && consent_is_valid(app, ctx, session)
     {
@@ -224,7 +197,8 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
 
     let page = pages::consent(&pages::Consent {
         client_name: &client_name,
-        redirect_target: &redirect_target_label(redirect_uri),
+        redirect_target: &client::redirect_target_label(redirect_uri),
+        scope: ctx.q("scope").unwrap_or(DEFAULT_SCOPE),
         session: session.as_ref(),
         login_url: &login_url,
         approve_url: approve_url.as_deref(),
@@ -235,51 +209,22 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         header::ACCESS_CONTROL_ALLOW_ORIGIN,
         HeaderValue::from_static("*"),
     );
-    res.headers_mut()
-        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    // 承認のボタンが出るときは枠に入れさせない (クリックジャッキング対策)。
+    // 他のサイトの枠の中には Cookie が届かずログインの案内だけが出るので、そこは今までどおり
+    res.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(if session.is_some() {
+            CSP_WITH_APPROVE
+        } else {
+            CSP_LOGIN
+        }),
+    );
     res
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn redirect_uri_rules() {
-        assert!(is_valid_redirect_uri(
-            "https://claude.ai/api/mcp/auth_callback"
-        ));
-        assert!(is_valid_redirect_uri("http://localhost:6274/callback"));
-        assert!(is_valid_redirect_uri("http://127.0.0.1:33418/"));
-        assert!(is_valid_redirect_uri(
-            "cursor://anysphere.cursor-retrieval/oauth/callback"
-        ));
-        assert!(!is_valid_redirect_uri("http://evil.example/cb"));
-        assert!(!is_valid_redirect_uri("javascript:alert(1)"));
-        assert!(!is_valid_redirect_uri("data:text/html,x"));
-        assert!(!is_valid_redirect_uri("https://a.example/cb#frag"));
-        assert!(!is_valid_redirect_uri("not a url"));
-    }
-
-    #[test]
-    fn display_name_detection() {
-        assert_eq!(
-            client_display_name("toro-ai-1", "https://claude.ai/cb"),
-            "Claude"
-        );
-        assert_eq!(
-            client_display_name("toro-ai-1", "https://chatgpt.com/cb"),
-            "ChatGPT"
-        );
-        assert_eq!(
-            client_display_name("x", "https://oauth.google.com/cb"),
-            "Google Gemini"
-        );
-        assert_eq!(
-            client_display_name("toro-ai-1", "https://a.example/"),
-            "toro-ai-1"
-        );
-    }
 
     #[test]
     fn set_param_replaces_existing_value() {
