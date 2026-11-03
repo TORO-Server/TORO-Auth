@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 /// 暗号論的に安全な乱数の 16 進表記
 pub fn random_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
-    rand::Rng::fill(&mut rand::rng(), buf.as_mut_slice());
+    rand::RngExt::fill(&mut rand::rng(), buf.as_mut_slice());
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
