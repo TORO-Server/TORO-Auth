@@ -1797,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "toro-auth"
-version = "1.3.5"
+version = "1.3.6"
 dependencies = [
  "axum",
  "base64 0.23.1",

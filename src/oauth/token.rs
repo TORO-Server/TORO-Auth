@@ -88,12 +88,11 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     };
 
     let scope = claim(&claims, "scope").unwrap_or(DEFAULT_SCOPE).to_string();
-    if let Some(expected_client_id) = claim(&claims, "client_id") {
-        if let Some(client_id) = param(params, "client_id") {
-            if client_id != expected_client_id {
-                return oauth_error(ctx, "invalid_grant", "client_id mismatch");
-            }
-        }
+    if let Some(expected_client_id) = claim(&claims, "client_id")
+        && let Some(client_id) = param(params, "client_id")
+        && client_id != expected_client_id
+    {
+        return oauth_error(ctx, "invalid_grant", "client_id mismatch");
     }
     let now = jwt::now();
     claims.insert("iss".into(), json!(app.cfg.issuer));
