@@ -198,7 +198,20 @@ async fn full_flow_from_guest_to_refresh() {
     .await;
     assert_eq!(res.status(), 200);
     let renewed: Value = res.json().await.unwrap();
-    assert_eq!(renewed["refresh_token"], refresh);
+    // リフレッシュのたびに、新しいリフレッシュトークンが返る (使っている間は続くように)。新しいほうでも、もう一度リフレッシュできる
+    let renewed_refresh = renewed["refresh_token"].as_str().unwrap();
+    assert_eq!(
+        token_request(
+            &server,
+            &[
+                ("grant_type", "refresh_token"),
+                ("refresh_token", renewed_refresh)
+            ]
+        )
+        .await
+        .status(),
+        200
+    );
     let claims = server
         .introspect(renewed["access_token"].as_str().unwrap())
         .await
@@ -546,4 +559,124 @@ async fn expired_consent_is_refused() {
         .await;
     assert_eq!(res.status(), 200);
     assert!(res.headers().get(header::LOCATION).is_none());
+}
+
+// ---- 使っている間は続き、使わないと無効になる ----
+
+use std::time::Duration;
+
+async fn issue_tokens(server: &TestServer) -> (String, String) {
+    let cookie = server.login("member").await;
+    let code = get_code(server, &cookie).await;
+    let tokens: Value = exchange(server, &code).await.json().await.unwrap();
+    (
+        tokens["access_token"].as_str().unwrap().to_string(),
+        tokens["refresh_token"].as_str().unwrap().to_string(),
+    )
+}
+
+async fn refresh_with(server: &TestServer, refresh: &str) -> reqwest::Response {
+    token_request(
+        server,
+        &[("grant_type", "refresh_token"), ("refresh_token", refresh)],
+    )
+    .await
+}
+
+#[tokio::test]
+async fn login_continues_while_used_and_ends_after_idling() {
+    // 使わないまま 2 秒を過ぎたら無効。1.1 秒おきに使えば、合計が 2 秒を超えても続く
+    let server = start_with(|cfg| cfg.oauth_idle_seconds = 2).await;
+    let (access, refresh) = issue_tokens(&server).await;
+    for round in 1..=3 {
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        assert!(server.introspect(&access).await.is_some(), "round {round}");
+    }
+    // 使わずに置く
+    tokio::time::sleep(Duration::from_millis(3200)).await;
+    assert!(server.introspect(&access).await.is_none());
+    // リフレッシュトークンも通らない (もう一度ログインして連携する)
+    let res = refresh_with(&server, &refresh).await;
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_grant");
+    assert!(
+        body["error_description"]
+            .as_str()
+            .unwrap()
+            .contains("not used")
+    );
+    // 無効になった連携は、あとから使っても戻らない
+    assert!(server.introspect(&access).await.is_none());
+}
+
+#[tokio::test]
+async fn refreshing_keeps_the_grant_alive_without_other_use() {
+    let server = start_with(|cfg| cfg.oauth_idle_seconds = 2).await;
+    let (access, mut refresh) = issue_tokens(&server).await;
+    let gid = jwt::verify(&access, JWT_SECRET).unwrap()["gid"].clone();
+    assert!(gid.as_str().is_some_and(|g| g.len() == 32), "{gid}");
+    let mut last_access = access;
+    // アクセストークンは使わず、リフレッシュだけを続ける (合計 3.3 秒 > 2 秒)
+    for round in 1..=3 {
+        tokio::time::sleep(Duration::from_millis(1100)).await;
+        let res = refresh_with(&server, &refresh).await;
+        assert_eq!(res.status(), 200, "round {round}");
+        let renewed: Value = res.json().await.unwrap();
+        refresh = renewed["refresh_token"].as_str().unwrap().to_string();
+        last_access = renewed["access_token"].as_str().unwrap().to_string();
+        assert_eq!(jwt::verify(&last_access, JWT_SECRET).unwrap()["gid"], gid);
+        assert_eq!(jwt::verify(&refresh, JWT_SECRET).unwrap()["gid"], gid);
+    }
+    assert!(server.introspect(&last_access).await.is_some());
+}
+
+#[tokio::test]
+async fn tokens_from_before_grants_still_work_and_become_grants_on_refresh() {
+    let server = start_with(|cfg| cfg.oauth_idle_seconds = 2).await;
+    let now = jwt::now();
+    // gid を持たない昔のトークン
+    let legacy_access = jwt::sign(
+        &json!({
+            "sub": "1001", "id": "1001", "username": "member_user", "can_edit": true, "roles": [],
+            "scope": "mcp", "type": "mcp_access_token", "iat": now, "exp": now + 3600,
+        }),
+        JWT_SECRET,
+    );
+    let legacy_refresh = jwt::sign(
+        &json!({
+            "sub": "1001", "id": "1001", "username": "member_user", "can_edit": true,
+            "scope": "mcp", "type": "mcp_refresh_token", "iat": now, "exp": now + 3600,
+        }),
+        JWT_SECRET,
+    );
+    assert!(server.introspect(&legacy_access).await.is_some());
+
+    // リフレッシュすると、連携の記録を持つ新しいトークンになり、そこから「使わないと無効」が効く
+    let renewed: Value = refresh_with(&server, &legacy_refresh)
+        .await
+        .json()
+        .await
+        .unwrap();
+    let access = renewed["access_token"].as_str().unwrap();
+    assert!(jwt::verify(access, JWT_SECRET).unwrap()["gid"].is_string());
+    assert!(server.introspect(access).await.is_some());
+    tokio::time::sleep(Duration::from_millis(3200)).await;
+    assert!(server.introspect(access).await.is_none());
+}
+
+#[tokio::test]
+async fn a_lost_grant_record_invalidates_the_tokens() {
+    // 連携の記録が無い (失った・偽の) gid のトークンは、署名が正しくても通さない
+    let server = start().await;
+    let now = jwt::now();
+    let token = jwt::sign(
+        &json!({
+            "sub": "1001", "id": "1001", "username": "member_user", "can_edit": true, "roles": [],
+            "scope": "mcp", "type": "mcp_access_token", "gid": "00000000000000000000000000000000",
+            "iat": now, "exp": now + 3600,
+        }),
+        JWT_SECRET,
+    );
+    assert!(server.introspect(&token).await.is_none());
 }

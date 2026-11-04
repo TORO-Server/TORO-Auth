@@ -113,9 +113,23 @@ pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
     }
     match claims.get("type") {
         None => Some(claims),
-        Some(kind) if kind == ACCESS_TOKEN_TYPE => Some(claims),
+        Some(kind) if kind == ACCESS_TOKEN_TYPE => grant_is_active(app, &claims).then_some(claims),
         Some(_) => None,
     }
+}
+
+/// OAuth のアクセストークンは、連携 (`gid`) がまだ有効なときだけ通す。通ったら、最後に使った時刻を更新する (使っている間は続く)。
+/// 使わないまま `OAUTH_IDLE_DAYS` を過ぎた連携は、ここで断る。`gid` を持たない昔のトークンは、署名の期限までは通す
+/// (リフレッシュすると、`gid` を持つ新しいトークンになる)
+fn grant_is_active(app: &App, claims: &Claims) -> bool {
+    let Some(gid) = claims.get("gid").and_then(Value::as_str) else {
+        return true;
+    };
+    let Some(user) = claims.get("id").and_then(Value::as_str) else {
+        return false;
+    };
+    app.grants
+        .touch(gid, user, app.cfg.oauth_idle_seconds, jwt::now())
 }
 
 /// 再作成で置き換えられたトークンと、世代を持たない昔のトークンは通さない

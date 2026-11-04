@@ -151,6 +151,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         discord_bot_token: None,
         discord_api: start_fake_discord().await,
         state_dir: state_dir.to_string_lossy().into_owned(),
+        oauth_idle_seconds: 30 * 86400,
     };
     customize(&mut cfg);
 
