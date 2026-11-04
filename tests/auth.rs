@@ -17,7 +17,7 @@ async fn login_sets_session_and_returns_to_the_requested_page() {
     assert_eq!(target, "https://wiki.torosaba.net/foo?x=1");
 
     let me: Value = server
-        .get_with_cookie("/api/auth/me", &cookie)
+        .get_with_cookie("/session", &cookie)
         .await
         .json()
         .await
@@ -49,9 +49,9 @@ async fn foreign_return_urls_fall_back_to_the_wiki() {
 #[tokio::test]
 async fn callback_requires_the_browser_that_started_the_login() {
     let server = start().await;
-    let start = server.get("/api/auth/login").await;
+    let start = server.get("/login").await;
     let state = encode_uri_component(&query_param(&location(&start), "state").unwrap());
-    let path = format!("/api/auth/callback?code=member&state={state}");
+    let path = format!("/callback?code=member&state={state}");
 
     // Cookie なし (他人に踏ませたリンク)
     let res = server.get(&path).await;
@@ -79,7 +79,7 @@ async fn callback_rejects_forged_state() {
     let res = server
         .get_with_cookie(
             &format!(
-                "/api/auth/callback?code=member&state={}",
+                "/callback?code=member&state={}",
                 encode_uri_component(&forged)
             ),
             "__Host-toro_login_nonce=n",
@@ -91,15 +91,12 @@ async fn callback_rejects_forged_state() {
 #[tokio::test]
 async fn non_members_are_refused() {
     let server = start().await;
-    let start = server.get("/api/auth/login").await;
+    let start = server.get("/login").await;
     let state = encode_uri_component(&query_param(&location(&start), "state").unwrap());
     let nonce = cookie_pair(&set_cookies(&start), "__Host-toro_login_nonce").unwrap();
 
     let res = server
-        .get_with_cookie(
-            &format!("/api/auth/callback?code=outsider&state={state}"),
-            &nonce,
-        )
+        .get_with_cookie(&format!("/callback?code=outsider&state={state}"), &nonce)
         .await;
     assert_eq!(res.status(), 403);
     assert!(
@@ -113,15 +110,12 @@ async fn non_members_are_refused() {
 #[tokio::test]
 async fn discord_exchange_failure_is_reported() {
     let server = start().await;
-    let start = server.get("/api/auth/login").await;
+    let start = server.get("/login").await;
     let state = encode_uri_component(&query_param(&location(&start), "state").unwrap());
     let nonce = cookie_pair(&set_cookies(&start), "__Host-toro_login_nonce").unwrap();
 
     let res = server
-        .get_with_cookie(
-            &format!("/api/auth/callback?code=bad&state={state}"),
-            &nonce,
-        )
+        .get_with_cookie(&format!("/callback?code=bad&state={state}"), &nonce)
         .await;
     assert_eq!(res.status(), 400);
     let body: Value = res.json().await.unwrap();
@@ -138,7 +132,7 @@ async fn required_role_controls_can_edit() {
     let server = start_with(|cfg| cfg.discord_required_role_id = Some("role-z".into())).await;
     let cookie = server.login("member").await;
     let me: Value = server
-        .get_with_cookie("/api/auth/me", &cookie)
+        .get_with_cookie("/session", &cookie)
         .await
         .json()
         .await
@@ -148,7 +142,7 @@ async fn required_role_controls_can_edit() {
     let server = start_with(|cfg| cfg.discord_required_role_id = Some("role-b".into())).await;
     let cookie = server.login("member").await;
     let me: Value = server
-        .get_with_cookie("/api/auth/me", &cookie)
+        .get_with_cookie("/session", &cookie)
         .await
         .json()
         .await
@@ -159,7 +153,7 @@ async fn required_role_controls_can_edit() {
 #[tokio::test]
 async fn me_without_session() {
     let server = start().await;
-    let res = server.get("/api/auth/me").await;
+    let res = server.get("/session").await;
     assert_eq!(
         res.text().await.unwrap(),
         r#"{"authenticated":false,"user":null}"#
@@ -172,7 +166,7 @@ async fn logout_clears_cookies_in_both_formats() {
 
     let res = server
         .client
-        .post(server.url("/api/auth/logout"))
+        .post(server.url("/logout"))
         .header(header::ACCEPT, "application/json")
         .send()
         .await;
@@ -186,7 +180,7 @@ async fn logout_clears_cookies_in_both_formats() {
 
     let res = server
         .client
-        .get(server.url("/api/auth/logout"))
+        .get(server.url("/logout"))
         .header(header::ACCEPT, "text/html")
         .send()
         .await;
@@ -194,7 +188,7 @@ async fn logout_clears_cookies_in_both_formats() {
     assert!(
         set_cookies(&res)
             .iter()
-            .any(|c| c.starts_with("wiki_session=;"))
+            .any(|c| c.starts_with("__Host-toro_session=;"))
     );
     assert!(res.text().await.unwrap().contains("ログアウトしました"));
 }
@@ -205,7 +199,7 @@ async fn api_token_requires_post_and_session() {
     assert_eq!(
         server
             .client
-            .post(server.url("/api/auth/token"))
+            .post(server.url("/token"))
             .send()
             .await
             .unwrap()
@@ -216,16 +210,13 @@ async fn api_token_requires_post_and_session() {
     let cookie = server.login("member").await;
     // GET では発行しない (他のサイトからリンクで踏ませない)
     assert_eq!(
-        server
-            .get_with_cookie("/api/auth/token", &cookie)
-            .await
-            .status(),
+        server.get_with_cookie("/token", &cookie).await.status(),
         405
     );
 
     let res = server
         .client
-        .post(server.url("/api/auth/token"))
+        .post(server.url("/token"))
         .header(header::COOKIE, &cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
@@ -246,7 +237,7 @@ async fn api_token_requires_post_and_session() {
     // Bearer として使える
     let res = server
         .client
-        .get(server.url("/api/auth/me"))
+        .get(server.url("/session"))
         .bearer_auth(token)
         .send()
         .await
@@ -257,7 +248,7 @@ async fn api_token_requires_post_and_session() {
 async fn issue_token(server: &TestServer, cookie: &str) -> String {
     let res = server
         .client
-        .post(server.url("/api/auth/token"))
+        .post(server.url("/token"))
         .header(header::COOKIE, cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
@@ -342,7 +333,7 @@ async fn token_is_never_shown_again_after_it_is_issued() {
     assert!(before.contains("未発行"));
 
     let token = issue_token(&server, &cookie).await;
-    for path in ["/", "/api/auth/me"] {
+    for path in ["/", "/session"] {
         let page = server
             .get_with_cookie(path, &cookie)
             .await
@@ -370,7 +361,7 @@ async fn failing_to_save_the_record_issues_no_token() {
     let cookie = server.login("member").await;
     let res = server
         .client
-        .post(server.url("/api/auth/token"))
+        .post(server.url("/token"))
         .header(header::COOKIE, &cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
@@ -386,7 +377,7 @@ async fn cors_allows_credentials_only_for_our_origins() {
     let server = start().await;
     let origin = |o: &'static str| {
         let client = server.client.clone();
-        let url = server.url("/api/auth/me");
+        let url = server.url("/session");
         async move {
             client
                 .get(url)
@@ -430,7 +421,7 @@ async fn home_shows_guest_and_session_and_escapes_names() {
     let server = start().await;
     let guest = server.get("/").await.text().await.unwrap();
     assert!(guest.contains("未ログイン"));
-    assert!(guest.contains("/api/auth/login"));
+    assert!(guest.contains("/login"));
     assert!(!guest.contains("{{"));
     // ログインの情報のほかに、説明を置かない
     for extra in [

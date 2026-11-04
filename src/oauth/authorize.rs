@@ -190,7 +190,7 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
     let issuer = &app.cfg.issuer;
     let authorize_url = format!("{issuer}/oauth/authorize?{base}");
     let login_url = format!(
-        "{issuer}/api/auth/login?redirect={}",
+        "{issuer}/login?redirect={}",
         encode_uri_component(&authorize_url)
     );
     let deny_url = format!("/oauth/authorize?{base}&denied=1");

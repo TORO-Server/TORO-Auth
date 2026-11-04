@@ -435,7 +435,7 @@ async fn only_access_tokens_work_as_bearer() {
     for token in [refresh, code.as_str()] {
         let me: Value = server
             .client
-            .get(server.url("/api/auth/me"))
+            .get(server.url("/session"))
             .bearer_auth(token)
             .send()
             .await
@@ -488,7 +488,7 @@ async fn token_endpoint_errors() {
 #[tokio::test]
 async fn userinfo_requires_a_bearer_token() {
     let server = start().await;
-    assert_eq!(server.get("/userinfo").await.status(), 401);
+    assert_eq!(server.get("/oauth/userinfo").await.status(), 401);
     // セッションのトークンには sub が無い
     let cookie = server.login("member").await;
     let token = cookie.strip_prefix("__Host-toro_session=").unwrap();
@@ -575,6 +575,16 @@ async fn issue_tokens(server: &TestServer) -> (String, String) {
     )
 }
 
+#[tokio::test]
+async fn oauth_access_tokens_get_roles_too() {
+    // OAuth のアクセストークンは roles が空で発行される。確認の窓口が、いまのロールを足す
+    let server = start_with(|cfg| cfg.discord_bot_token = Some("bot-token".into())).await;
+    let (access, _) = issue_tokens(&server).await;
+    let claims = server.introspect(&access).await.unwrap();
+    assert_eq!(claims["roles"], json!(["role-a", "role-b"]));
+    assert_eq!(claims["roles_source"], "live");
+}
+
 async fn refresh_with(server: &TestServer, refresh: &str) -> reqwest::Response {
     token_request(
         server,
@@ -632,8 +642,8 @@ async fn refreshing_keeps_the_grant_alive_without_other_use() {
 }
 
 #[tokio::test]
-async fn tokens_from_before_grants_still_work_and_become_grants_on_refresh() {
-    let server = start_with(|cfg| cfg.oauth_idle_seconds = 2).await;
+async fn tokens_without_a_grant_are_refused() {
+    let server = start().await;
     let now = jwt::now();
     // gid を持たない昔のトークン
     let legacy_access = jwt::sign(
@@ -650,19 +660,11 @@ async fn tokens_from_before_grants_still_work_and_become_grants_on_refresh() {
         }),
         JWT_SECRET,
     );
-    assert!(server.introspect(&legacy_access).await.is_some());
-
-    // リフレッシュすると、連携の記録を持つ新しいトークンになり、そこから「使わないと無効」が効く
-    let renewed: Value = refresh_with(&server, &legacy_refresh)
-        .await
-        .json()
-        .await
-        .unwrap();
-    let access = renewed["access_token"].as_str().unwrap();
-    assert!(jwt::verify(access, JWT_SECRET).unwrap()["gid"].is_string());
-    assert!(server.introspect(access).await.is_some());
-    tokio::time::sleep(Duration::from_millis(3200)).await;
-    assert!(server.introspect(access).await.is_none());
+    assert!(server.introspect(&legacy_access).await.is_none());
+    // リフレッシュも通らない (もう一度ログインして連携する)
+    let res = refresh_with(&server, &legacy_refresh).await;
+    assert_eq!(res.status(), 400);
+    assert_eq!(res.json::<Value>().await.unwrap()["error"], "invalid_grant");
 }
 
 #[tokio::test]

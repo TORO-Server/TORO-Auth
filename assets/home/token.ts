@@ -17,7 +17,7 @@ function setup(issue: HTMLButtonElement): void {
   async function issueToken(): Promise<void> {
     issue.disabled = true;
     try {
-      const res = await fetch('/api/auth/token', { method: 'POST' });
+      const res = await fetch('/token', { method: 'POST' });
       const data = (await res.json()) as TokenResponse;
       if (!data.token) {
         message.textContent = 'トークンを発行できませんでした: ' + (data.error || res.status);
