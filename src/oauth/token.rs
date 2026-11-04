@@ -115,25 +115,15 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     let idle = app.cfg.oauth_idle_seconds;
     let user = claim(&claims, "id").unwrap_or("").to_string();
     // 使っている間は続き、使わないまま期間を過ぎた連携は、ここで終わる (もう一度ログインして連携する)
-    let gid = match claim(&claims, "gid") {
-        Some(gid) => {
-            if !app.grants.touch(gid, &user, idle, now) {
-                return oauth_error(
-                    ctx,
-                    "invalid_grant",
-                    "The authorization expired because it was not used for a while",
-                );
-            }
-            gid.to_string()
-        }
-        // 連携の記録が無い昔のリフレッシュトークン: ここから、記録のある連携にする
-        None => match app.grants.create(&user, idle, now) {
-            Ok(gid) => gid,
-            Err(e) => {
-                eprintln!("grants: {e}");
-                return server_error(ctx);
-            }
-        },
+    let Some(gid) = claim(&claims, "gid")
+        .filter(|gid| app.grants.touch(gid, &user, idle, now))
+        .map(str::to_string)
+    else {
+        return oauth_error(
+            ctx,
+            "invalid_grant",
+            "The authorization expired because it was not used for a while",
+        );
     };
     // 使っている間は続くよう、リフレッシュトークンも新しくして、署名の期限を延ばす
     let new_refresh = sign_refresh(app, &claims, &gid, now);

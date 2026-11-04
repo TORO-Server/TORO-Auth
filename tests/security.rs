@@ -147,7 +147,7 @@ async fn cookies_on_the_parent_domain_are_not_accepted() {
 }
 
 #[tokio::test]
-async fn session_cookie_is_host_only_and_clears_the_old_ones() {
+async fn session_cookie_is_host_only() {
     let server = start().await;
     let start = server.get("/login").await;
     let state = query_param(&location(&start), "state").unwrap();
@@ -173,10 +173,7 @@ async fn session_cookie_is_host_only_and_clears_the_old_ones() {
         .unwrap();
     assert!(session.ends_with("; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"));
     assert!(!session.contains("Domain"));
-    for old in ["toro_session=;", "wiki_session=;"] {
-        let removal = cookies.iter().find(|c| c.starts_with(old)).unwrap();
-        assert!(removal.contains("Max-Age=0") && removal.contains("Domain=.torosaba.net"));
-    }
+    assert!(cookies.iter().all(|c| !c.contains("Domain")));
 }
 
 #[tokio::test]
@@ -248,7 +245,7 @@ async fn introspection_passes_the_scope_through_and_refuses_the_rest() {
     let token = |scope: &str| {
         token_for(json!({
             "id": "1", "sub": "1", "username": "u", "can_edit": true, "scope": scope,
-            "type": "mcp_access_token", "exp": jwt::now() + 60,
+            "exp": jwt::now() + 60,
         }))
     };
     // scope は、api / mcp が書き込みを許すかどうかを決める材料としてそのまま渡る
