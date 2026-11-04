@@ -484,7 +484,8 @@ async fn every_page_has_a_content_security_policy() {
     assert!(policy.contains("script-src 'self'"));
     assert!(policy.contains("connect-src 'self'"));
     assert!(policy.contains("frame-ancestors 'none'"));
-    assert!(!policy.contains("script-src 'self' 'unsafe-inline'"));
+    assert!(!policy.contains("'unsafe-inline'"));
+    assert!(!home.text().await.unwrap().contains(" style="));
 
     // スクリプトを持たない画面
     let guest = server
@@ -533,6 +534,41 @@ async fn internal_errors_do_not_reach_the_client() {
         res.json::<Value>().await.unwrap(),
         json!({ "error": "Internal Server Error" })
     );
+}
+
+#[tokio::test]
+async fn health_checks_answer_even_when_every_slot_is_taken() {
+    use tokio::io::AsyncWriteExt;
+    let server = start().await;
+    let address = server.base.strip_prefix("http://").unwrap();
+    // ボディを送らないまま待つ接続で、同時処理の枠 (256) をすべて埋める
+    let mut streams = Vec::new();
+    for _ in 0..256 {
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(b"POST /oauth/token HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\n")
+            .await
+            .unwrap();
+        streams.push(stream);
+    }
+    let busy = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            let res = server.get("/nope").await;
+            if res.status() == 503 {
+                return res;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(busy.headers()[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert_eq!(busy.headers()[header::CACHE_CONTROL], "no-store");
+
+    let health = server.get("/healthz").await;
+    assert_eq!(health.status(), 200);
+    assert_eq!(health.headers()[header::CACHE_CONTROL], "no-store");
+    drop(streams);
 }
 
 #[tokio::test]
