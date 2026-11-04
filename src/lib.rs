@@ -44,6 +44,8 @@ pub struct App {
     pub requests: Semaphore,
     pub tokens: auth::tokens::TokenStore,
     pub role_names: auth::discord::RoleNames,
+    /// 利用者のいまのロール (確認の窓口が、権限の判断に使う)
+    pub live_roles: auth::discord::LiveRolesCache,
 }
 
 impl App {
@@ -58,6 +60,7 @@ impl App {
             cfg,
             tokens,
             role_names: Default::default(),
+            live_roles: Default::default(),
             http,
             used_codes: Mutex::new(HashMap::new()),
             requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),

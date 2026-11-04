@@ -162,6 +162,81 @@ pub async fn membership(app: &App, user_id: &str, access_token: &str) -> Members
     }
 }
 
+/// 利用者のロールの確認結果
+pub enum LiveRoles {
+    /// Discord で、いま確かめた (ギルドに居なければ空)
+    Live(Vec<String>),
+    /// 確かめられなかった (Discord の障害など)
+    Unavailable,
+    /// Bot トークンが無く、確かめる手段が無い
+    NotConfigured,
+}
+
+const LIVE_ROLES_TTL: Duration = Duration::from_secs(60);
+/// 確認の窓口は内側だけなので、短く待つ (api / mcp / guard を長く待たせない)
+const LIVE_ROLES_TIMEOUT: Duration = Duration::from_secs(3);
+const LIVE_ROLES_MAX: usize = 2048;
+
+/// 利用者のロールを、短い間だけ覚えておく (トークンの確認のたびに Discord を呼ばないため)
+#[derive(Default)]
+pub struct LiveRolesCache {
+    cached: Mutex<HashMap<String, (Instant, Vec<String>)>>,
+}
+
+impl LiveRolesCache {
+    fn fresh(&self, user_id: &str) -> Option<Vec<String>> {
+        let cached = self.cached.lock().unwrap_or_else(PoisonError::into_inner);
+        cached
+            .get(user_id)
+            .filter(|(fetched_at, _)| fetched_at.elapsed() < LIVE_ROLES_TTL)
+            .map(|(_, roles)| roles.clone())
+    }
+
+    fn store(&self, user_id: &str, roles: Vec<String>) {
+        let mut cached = self.cached.lock().unwrap_or_else(PoisonError::into_inner);
+        if cached.len() >= LIVE_ROLES_MAX {
+            cached.retain(|_, (fetched_at, _)| fetched_at.elapsed() < LIVE_ROLES_TTL);
+            if cached.len() >= LIVE_ROLES_MAX {
+                cached.clear();
+            }
+        }
+        cached.insert(user_id.to_string(), (Instant::now(), roles));
+    }
+}
+
+/// 利用者の、いまのロール。トークンに入っているロールは、発行した時点のもので古くなるので、
+/// 権限の判断 (Admin かどうか) には、これを使う。ギルドに居なければ、空のロール
+pub async fn live_roles(app: &App, user_id: &str) -> LiveRoles {
+    let Some(bot_token) = &app.cfg.discord_bot_token else {
+        return LiveRoles::NotConfigured;
+    };
+    if let Some(roles) = app.live_roles.fresh(user_id) {
+        return LiveRoles::Live(roles);
+    }
+    let res = app
+        .http
+        .get(format!(
+            "{}/guilds/{}/members/{user_id}",
+            app.cfg.discord_api, app.cfg.discord_guild_id
+        ))
+        .header("Authorization", format!("Bot {bot_token}"))
+        .timeout(LIVE_ROLES_TIMEOUT)
+        .send()
+        .await;
+    let Ok(res) = res else {
+        return LiveRoles::Unavailable;
+    };
+    let roles = match res.status().as_u16() {
+        200 => match res.json::<Value>().await {
+            Ok(member) => roles_of(&member),
+            Err(_) => return LiveRoles::Unavailable,
+        },
+        404 => Vec::new(), // ギルドを抜けた人
+        _ => return LiveRoles::Unavailable,
+    };
+    app.live_roles.store(user_id, roles.clone());
+    LiveRoles::Live(roles)
+}
 /// ギルドのロールの名前を、少しの間覚えておく
 #[derive(Default)]
 pub struct RoleNames {

@@ -91,6 +91,22 @@ async fn start_fake_discord() -> String {
                     ]),
                 )
             }
+            // いまのロール (Bot トークンでだけ読める)。トークンに入っているものとは、わざと違う値にしてある
+            p if p.starts_with(&format!("/guilds/{GUILD}/members/")) => {
+                let is_bot = parts
+                    .headers
+                    .get(header::AUTHORIZATION)
+                    .is_some_and(|h| h.as_bytes().starts_with(b"Bot "));
+                if !is_bot {
+                    return json_response(401, json!({ "message": "401: Unauthorized" }));
+                }
+                match p.rsplit('/').next().unwrap_or("") {
+                    "7007" => json_response(200, json!({ "roles": ["role-live"] })),
+                    "8008" => json_response(404, json!({ "message": "Unknown Member" })),
+                    "9009" => json_response(500, json!({ "message": "boom" })),
+                    _ => json_response(200, json!({ "roles": ["role-a", "role-b"] })),
+                }
+            }
             _ => json_response(404, json!({ "message": "not found" })),
         }
     });

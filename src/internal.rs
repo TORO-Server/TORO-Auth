@@ -16,6 +16,7 @@ use axum::response::Response;
 use serde_json::{Value, json};
 
 use crate::App;
+use crate::auth::discord::{self, LiveRoles};
 use crate::auth::session;
 use crate::http;
 
@@ -31,7 +32,7 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
     let mut res = match (parts.method.clone(), parts.uri.path()) {
         (Method::GET, "/healthz") => reply(200, &json!({ "ok": true })),
         (Method::POST, "/introspect") => match to_bytes(body, MAX_BODY_BYTES).await {
-            Ok(body) => introspect(&app, &body),
+            Ok(body) => introspect(&app, &body).await,
             Err(_) => reply(413, &json!({ "error": "Payload Too Large" })),
         },
         (_, "/introspect" | "/healthz") => reply(405, &json!({ "error": "Method Not Allowed" })),
@@ -52,15 +53,35 @@ fn reply(status: u16, body: &Value) -> Response {
 }
 
 /// `{"token": "..."}` を受け、通るなら `{"active": true, "claims": {...}}`、通らないなら `{"active": false}`
-fn introspect(app: &App, body: &[u8]) -> Response {
+///
+/// `claims.roles` は、トークンに入っている値ではなく、**いまの Discord のロール**に差し替える (Bot トークンがあるとき)。
+/// ロールは、トークンを発行した時点のものが入っていて、30〜90 日古くなる。OAuth のアクセストークンにはロールが入らない。
+/// Admin かどうかなど、権限の判断に使う側 (mcp / guard) が、古いロールや空のロールで判断しないようにするため、ここで確かめる。
+/// 確かめられないとき (Discord の障害) は、ロール無しとして返す (権限を、安全な側に倒す)。
+/// `roles_source` が、どちらかを示す: `live` / `unavailable` / `token` (Bot トークンが無く、トークンの値のまま)
+async fn introspect(app: &App, body: &[u8]) -> Response {
     let Some(token) = serde_json::from_slice::<Value>(body)
         .ok()
         .and_then(|body| body.get("token")?.as_str().map(str::to_string))
     else {
         return reply(400, &json!({ "error": "Field \"token\" is required" }));
     };
-    match session::from_token(app, &token) {
-        Some(session) => reply(200, &json!({ "active": true, "claims": session.claims })),
-        None => reply(200, &json!({ "active": false })),
-    }
+    let Some(session) = session::from_token(app, &token) else {
+        return reply(200, &json!({ "active": false }));
+    };
+    let user_id = session.id().to_string();
+    let mut claims = session.claims;
+    let source = match discord::live_roles(app, &user_id).await {
+        LiveRoles::Live(roles) => {
+            claims.insert("roles".into(), json!(roles));
+            "live"
+        }
+        LiveRoles::Unavailable => {
+            claims.insert("roles".into(), json!([]));
+            "unavailable"
+        }
+        LiveRoles::NotConfigured => "token",
+    };
+    claims.insert("roles_source".into(), json!(source));
+    reply(200, &json!({ "active": true, "claims": claims }))
 }
