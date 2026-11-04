@@ -4,12 +4,14 @@
 //! - `register`: 動的クライアント登録 (RFC 7591)
 //! - `authorize`: 認可エンドポイントと同意の流れ
 //! - `client`: クライアントの見分け方と、戻り先の検査
+//! - `grants`: 連携の、最後に使った時刻の記録 (使っている間は続き、一定期間使わないと無効になる)
 //! - `pages`: 同意画面などの HTML
 //! - `token`: トークンエンドポイント
 //! - `userinfo`: OIDC UserInfo
 
 pub mod authorize;
 pub mod client;
+pub mod grants;
 pub mod metadata;
 pub mod pages;
 pub mod register;
