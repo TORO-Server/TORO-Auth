@@ -26,8 +26,10 @@ pub struct Config {
     pub discord_bot_token: Option<String>,
     pub discord_api: String,
 
-    /// 再起動しても残す記録の置き場所 (90 日トークンの世代)
+    /// 再起動しても残す記録の置き場所 (90 日トークンの世代、OAuth の連携)
     pub state_dir: String,
+    /// OAuth の連携を、使わないまま置いてよい秒数。これを過ぎた連携は、トークンが通らなくなる (使っている間は続く)
+    pub oauth_idle_seconds: i64,
 }
 
 fn optional(name: &str) -> Option<String> {
@@ -97,6 +99,12 @@ impl Config {
             discord_bot_token: optional("DISCORD_BOT_TOKEN"),
             discord_api: trimmed("DISCORD_API", "https://discord.com/api/v10"),
             state_dir: or_default("STATE_DIR", "/data"),
+            oauth_idle_seconds: or_default("OAUTH_IDLE_DAYS", "30")
+                .parse::<i64>()
+                .ok()
+                .filter(|days| *days > 0)
+                .ok_or_else(|| "OAUTH_IDLE_DAYS must be a positive number".to_string())?
+                * 86400,
         })
     }
 }
