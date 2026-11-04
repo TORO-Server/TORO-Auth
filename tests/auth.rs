@@ -34,31 +34,6 @@ async fn login_sets_session_and_returns_to_the_requested_page() {
 }
 
 #[tokio::test]
-async fn the_old_api_auth_paths_answer_the_same() {
-    let server = start().await;
-    let (cookie, _) = server
-        .login_to("member", "https://wiki.torosaba.net/")
-        .await;
-
-    let new: Value = server
-        .get_with_cookie("/session", &cookie)
-        .await
-        .json()
-        .await
-        .unwrap();
-    let old: Value = server
-        .get_with_cookie("/api/auth/me", &cookie)
-        .await
-        .json()
-        .await
-        .unwrap();
-    assert_eq!(new, old);
-
-    let start = server.get("/api/auth/login").await;
-    assert_eq!(start.status(), server.get("/login").await.status());
-}
-
-#[tokio::test]
 async fn foreign_return_urls_fall_back_to_the_wiki() {
     let server = start().await;
     for bad in [
@@ -213,7 +188,7 @@ async fn logout_clears_cookies_in_both_formats() {
     assert!(
         set_cookies(&res)
             .iter()
-            .any(|c| c.starts_with("wiki_session=;"))
+            .any(|c| c.starts_with("__Host-toro_session=;"))
     );
     assert!(res.text().await.unwrap().contains("ログアウトしました"));
 }

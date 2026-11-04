@@ -138,8 +138,6 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         port: 0,
         internal_port: 0,
         issuer: base.clone(),
-        api_url: "https://api.torosaba.net".into(),
-        mcp_url: "https://mcp.torosaba.net".into(),
         wiki_url: WIKI_ORIGIN.into(),
         cors_origins: vec![WIKI_ORIGIN.into()],
         jwt_secret: JWT_SECRET.into(),

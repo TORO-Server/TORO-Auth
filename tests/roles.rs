@@ -56,18 +56,3 @@ async fn without_a_bot_token_the_token_roles_are_passed_through() {
     assert_eq!(claims["roles"], json!(["role-a"]));
     assert_eq!(claims["roles_source"], "token");
 }
-
-#[tokio::test]
-async fn oauth_access_tokens_get_roles_too() {
-    // OAuth のアクセストークンは roles が空で発行される。確認の窓口が、いまのロールを足す
-    let server = start_with(|cfg| cfg.discord_bot_token = Some("bot-token".into())).await;
-    let token = toro_auth::jwt::sign(
-        &json!({
-            "sub": "7007", "id": "7007", "username": "oauth_user", "can_edit": true, "roles": [],
-            "scope": "mcp", "type": "mcp_access_token", "exp": toro_auth::jwt::now() + 600,
-        }),
-        JWT_SECRET,
-    );
-    let claims = server.introspect(&token).await.unwrap();
-    assert_eq!(claims["roles"], json!(["role-live"]));
-}

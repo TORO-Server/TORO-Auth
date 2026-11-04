@@ -2,7 +2,7 @@
 
 TORO Server の共通認証 (auth.torosaba.net) のサーバーです。Rust 製で、TORO のサーバーの上で動きます。
 
-役割は「だれなのかを確かめる」ことだけです。以前はここに REST API と AI コネクタも同居していましたが、v2.0.0 で分けました。
+役割は「だれなのかを確かめる」ことだけです。
 
 ## 3 つのサービス
 
@@ -52,7 +52,7 @@ OAuth の連携 (認可コードをトークンに換えたときに 1 つでき
 - 最後に使ってから期間を過ぎた連携は、アクセストークンもリフレッシュトークンも通りません (`invalid_grant`: "not used for a while")。**もう一度ログインして連携します。** 一度無効になった連携は、あとから使っても戻りません
 - リフレッシュのたびに、新しいリフレッシュトークンを返します (署名の期限 180 日も、使っている間は延びます)。アクセストークンの署名の期限 (30 日) は、リフレッシュで新しくなります。リフレッシュしないクライアントは、30 日で連携し直しになります
 - 記録を失った (ファイルが消えた・壊れた) 連携は、無効になります (安全な側)。クライアントは、もう一度連携します
-- `gid` を持たない昔のトークンは、署名の期限までは通ります。リフレッシュすると、`gid` を持つ新しいトークンになり、そこから「使わないと無効」が効きます
+- `gid` を持たないトークンは通りません
 - 90 日トークン (`/token`) には、この仕組みは掛かりません (再作成か、期限 90 日で終わります)
 ## 機能ごとの置き場所
 
@@ -61,7 +61,6 @@ OAuth の連携 (認可コードをトークンに換えたときに 1 つでき
 | Discord ログイン、セッション、API トークンの発行と再作成 | `src/auth/` | `assets/auth/` | `tests/auth.rs` |
 | AI クライアント向けの OAuth 2.0 | `src/oauth/` | `assets/oauth/` | `tests/oauth.rs` |
 | api / mcp からのトークンの確認 | `src/internal.rs` | | `tests/hosts.rs` |
-| 以前の URL の転送 | `src/routes.rs` | | `tests/hosts.rs` |
 | アイコンとフォント | `src/static_files.rs` | `assets/icons/` `assets/fonts/` | `tests/hosts.rs` |
 | トップページ | `src/home.rs` | `assets/home/` | `tests/auth.rs` |
 
@@ -70,10 +69,6 @@ OAuth の連携 (認可コードをトークンに換えたときに 1 つでき
 URL を足すときは、機能のモジュールにハンドラーを書き、`src/routes.rs` に 1 行足します。
 
 OAuth の保護されたリソースのメタデータ (RFC 9728) は、リソースの持ち主である mcp が答えます。認可サーバーのメタデータ (RFC 8414) はここです。
-
-## 以前の URL
-
-auth にあった `/mcp` `/sse` `/api/mcp` `/api/docs/*` `/openapi.json` `/.well-known/oauth-protected-resource*` は、正しいホストへ 308 で転送します (`moved_from_auth`)。
 
 ## 画面
 
@@ -104,17 +99,6 @@ cargo test
 ## イメージ
 
 GitHub Actions が、試験に通ったものだけを GHCR に置きます (linux/amd64)。タグ `v*` を打つとバージョンのタグが付きます。
-
-## v1.x からの切り替え
-
-v1.x は 1 つのコンテナが 3 つのホストすべてに答えていました。v2 へは、次の順で切り替えます。
-
-1. `toro-api` と `toro-mcp` を、`toro-auth` と同じ Docker のネットワークに起動する。`toro-api` の env ファイルに `GITHUB_TOKEN` を入れる
-2. `toro-auth` を v2 にする。`toro-auth.env` の `GITHUB_TOKEN` は使わなくなる。内側のポート 8081 は `ports:` に載せない
-3. 確かめる: `toro-api` と `toro-mcp` のコンテナの中から、`toro-auth:8081/healthz` に届くこと
-4. Cloudflare のトンネルの公開ルートを変える: `api.torosaba.net` → `http://toro-api:8080`、`mcp.torosaba.net` → `http://toro-mcp:8080`、`auth.torosaba.net` は `http://toro-auth:8080` のまま
-
-戻すときは、ルートを `http://toro-auth:8080` に戻し、`toro-auth` を v1.3.6 のタグにします。
 
 ## セキュリティの考え方
 
