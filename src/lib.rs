@@ -43,6 +43,8 @@ pub struct App {
     pub used_codes: Mutex<HashMap<String, i64>>,
     pub requests: Semaphore,
     pub tokens: auth::tokens::TokenStore,
+    /// OAuth の連携の、最後に使った時刻 (使わないまま期間が過ぎると無効にする)
+    pub grants: oauth::grants::GrantStore,
     pub role_names: auth::discord::RoleNames,
     /// 利用者のいまのロール (確認の窓口が、権限の判断に使う)
     pub live_roles: auth::discord::LiveRolesCache,
@@ -56,9 +58,11 @@ impl App {
             .user_agent("TORO-Auth-Gateway")
             .build()?;
         let tokens = auth::tokens::TokenStore::load(&cfg.state_dir);
+        let grants = oauth::grants::GrantStore::load(&cfg.state_dir);
         Ok(Self {
             cfg,
             tokens,
+            grants,
             role_names: Default::default(),
             live_roles: Default::default(),
             http,
