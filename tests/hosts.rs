@@ -28,42 +28,24 @@ async fn auth_does_not_serve_api_or_mcp() {
 }
 
 #[tokio::test]
-async fn old_urls_on_auth_move_to_the_right_host() {
+async fn old_urls_are_gone() {
     let server = start().await;
-    for (old, new) in [
-        ("/api/mcp", "https://mcp.torosaba.net/"),
-        ("/mcp", "https://mcp.torosaba.net/mcp"),
-        ("/sse", "https://mcp.torosaba.net/sse"),
-        ("/api/openapi.json", "https://api.torosaba.net/openapi.json"),
-        ("/openapi.json", "https://api.torosaba.net/openapi.json"),
-        ("/api/docs/save", "https://api.torosaba.net/docs/save"),
-        (
-            "/api/docs/raw?path=a%20b",
-            "https://api.torosaba.net/docs/raw?path=a%20b",
-        ),
-        (
-            "/.well-known/oauth-protected-resource",
-            "https://mcp.torosaba.net/.well-known/oauth-protected-resource",
-        ),
+    for old in [
+        "/api/auth/login",
+        "/api/auth/me",
+        "/api/mcp",
+        "/mcp",
+        "/sse",
+        "/api/openapi.json",
+        "/openapi.json",
+        "/api/docs/raw",
+        "/api/docs/save",
+        "/userinfo",
+        "/index.html",
+        "/.well-known/oauth-protected-resource",
     ] {
-        let res = server.get(old).await;
-        assert_eq!(res.status(), 308, "{old}");
-        assert_eq!(location(&res), new, "{old}");
+        assert_eq!(server.get(old).await.status(), 404, "{old}");
     }
-
-    // POST も 308 で届き、Wiki の画面からの転送が読めるよう CORS も付く
-    let res = server
-        .client
-        .post(server.url("/api/docs/save"))
-        .header(header::ORIGIN, WIKI_ORIGIN)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(res.status(), 308);
-    assert_eq!(
-        res.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
-        WIKI_ORIGIN
-    );
 }
 
 #[tokio::test]
@@ -76,7 +58,7 @@ async fn session_tokens_are_short_and_checked_by_introspection() {
 
     let res = server
         .client
-        .post(server.url("/api/auth/session-token"))
+        .post(server.url("/session-token"))
         .header(header::COOKIE, &cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
@@ -100,7 +82,7 @@ async fn session_tokens_are_short_and_checked_by_introspection() {
 async fn session_tokens_need_the_cookie_a_trusted_origin_and_post() {
     let server = start().await;
     let cookie = server.login("member").await;
-    let path = server.url("/api/auth/session-token");
+    let path = server.url("/session-token");
 
     for origin in [Some("https://assets.torosaba.net"), None] {
         let mut request = server.client.post(&path).header(header::COOKIE, &cookie);
@@ -155,7 +137,7 @@ async fn introspection_only_answers_on_the_internal_port() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    for path in ["/", "/api/auth/me", "/oauth/token"] {
+    for path in ["/", "/session", "/oauth/token"] {
         let res = server.client.get(internal(path)).send().await.unwrap();
         assert_eq!(res.status(), 404, "{path}");
     }
@@ -200,8 +182,6 @@ async fn introspection_validates_its_input() {
 #[tokio::test]
 async fn pages_take_their_urls_from_the_config() {
     let server = start_with(|cfg| {
-        cfg.mcp_url = "https://mcp.example.test".into();
-        cfg.api_url = "https://api.example.test".into();
         cfg.wiki_url = "https://wiki.example.test".into();
     })
     .await;
@@ -216,12 +196,6 @@ async fn pages_take_their_urls_from_the_config() {
     let invalid = server.get("/oauth/authorize").await.text().await.unwrap();
     assert!(invalid.contains("https://wiki.example.test/wiki/"));
     assert!(!invalid.contains("{{"));
-
-    // 以前の URL の転送先も、設定から作る
-    let res = server.get("/mcp").await;
-    assert_eq!(location(&res), "https://mcp.example.test/mcp");
-    let res = server.get("/api/docs/raw").await;
-    assert_eq!(location(&res), "https://api.example.test/docs/raw");
 }
 
 #[tokio::test]
@@ -238,7 +212,7 @@ async fn asset_urls_change_with_each_version() {
 async fn token_script_is_served_without_types() {
     let server = start().await;
     let script = server.get("/_assets/token.js").await.text().await.unwrap();
-    assert!(script.contains("/api/auth/token"));
+    assert!(script.contains("/token"));
     assert!(!script.contains("TokenResponse"));
     assert!(!script.contains("HTMLButtonElement"));
 }

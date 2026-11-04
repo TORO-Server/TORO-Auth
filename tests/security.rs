@@ -30,7 +30,7 @@ async fn post_token(
     cookie: Option<&str>,
     bearer: Option<&str>,
 ) -> u16 {
-    let mut request = server.client.post(server.url("/api/auth/token"));
+    let mut request = server.client.post(server.url("/token"));
     if let Some(origin) = origin {
         request = request.header(header::ORIGIN, origin);
     }
@@ -49,7 +49,7 @@ async fn only_exact_origins_get_credentialed_cors() {
     let cors = |origin: &'static str| {
         let request = server
             .client
-            .get(server.url("/api/auth/me"))
+            .get(server.url("/session"))
             .header(header::ORIGIN, origin);
         async move { request.send().await.unwrap() }
     };
@@ -120,7 +120,7 @@ async fn cookies_cannot_carry_api_tokens() {
     ] {
         let cookie = format!("__Host-toro_session={}", token_for(claims));
         let me: Value = server
-            .get_with_cookie("/api/auth/me", &cookie)
+            .get_with_cookie("/session", &cookie)
             .await
             .json()
             .await
@@ -137,7 +137,7 @@ async fn cookies_on_the_parent_domain_are_not_accepted() {
 
     for name in ["toro_session", "wiki_session"] {
         let me: Value = server
-            .get_with_cookie("/api/auth/me", &format!("{name}={value}"))
+            .get_with_cookie("/session", &format!("{name}={value}"))
             .await
             .json()
             .await
@@ -147,9 +147,9 @@ async fn cookies_on_the_parent_domain_are_not_accepted() {
 }
 
 #[tokio::test]
-async fn session_cookie_is_host_only_and_clears_the_old_ones() {
+async fn session_cookie_is_host_only() {
     let server = start().await;
-    let start = server.get("/api/auth/login").await;
+    let start = server.get("/login").await;
     let state = query_param(&location(&start), "state").unwrap();
     let nonce_set_cookie = set_cookies(&start);
     assert!(nonce_set_cookie[0].starts_with("__Host-toro_login_nonce="));
@@ -160,7 +160,7 @@ async fn session_cookie_is_host_only_and_clears_the_old_ones() {
     let res = server
         .get_with_cookie(
             &format!(
-                "/api/auth/callback?code=member&state={}",
+                "/callback?code=member&state={}",
                 encode_uri_component(&state)
             ),
             &nonce,
@@ -173,10 +173,7 @@ async fn session_cookie_is_host_only_and_clears_the_old_ones() {
         .unwrap();
     assert!(session.ends_with("; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000"));
     assert!(!session.contains("Domain"));
-    for old in ["toro_session=;", "wiki_session=;"] {
-        let removal = cookies.iter().find(|c| c.starts_with(old)).unwrap();
-        assert!(removal.contains("Max-Age=0") && removal.contains("Domain=.torosaba.net"));
-    }
+    assert!(cookies.iter().all(|c| !c.contains("Domain")));
 }
 
 #[tokio::test]
@@ -248,7 +245,7 @@ async fn introspection_passes_the_scope_through_and_refuses_the_rest() {
     let token = |scope: &str| {
         token_for(json!({
             "id": "1", "sub": "1", "username": "u", "can_edit": true, "scope": scope,
-            "type": "mcp_access_token", "exp": jwt::now() + 60,
+            "exp": jwt::now() + 60,
         }))
     };
     // scope は、api / mcp が書き込みを許すかどうかを決める材料としてそのまま渡る
@@ -362,7 +359,7 @@ async fn verifier_without_challenge_is_refused_and_response_carries_iss() {
 async fn personal_responses_are_not_cacheable() {
     let server = start().await;
     let cookie = server.login("member").await;
-    for path in ["/", "/api/auth/me"] {
+    for path in ["/", "/session"] {
         let res = server.get_with_cookie(path, &cookie).await;
         assert_eq!(res.headers()[header::CACHE_CONTROL], "no-store", "{path}");
     }

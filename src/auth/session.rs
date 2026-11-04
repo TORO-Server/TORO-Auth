@@ -31,8 +31,6 @@ const DEFAULT_AVATAR: &str = concat!("/_assets/favicon.svg?v=", env!("CARGO_PKG_
 pub const SESSION_COOKIE: &str = "__Host-toro_session";
 const SESSION_MAX_AGE: i64 = 30 * 86400;
 const COOKIE_ATTRIBUTES: &str = "Path=/; HttpOnly; Secure; SameSite=Lax";
-/// 以前の実装が .torosaba.net に置いていた Cookie。古いトークンをブラウザに残さないよう消す
-const LEGACY_COOKIES: [&str; 2] = ["toro_session", "wiki_session"];
 
 pub struct Session {
     pub claims: Map<String, Value>,
@@ -119,11 +117,10 @@ pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
 }
 
 /// OAuth のアクセストークンは、連携 (`gid`) がまだ有効なときだけ通す。通ったら、最後に使った時刻を更新する (使っている間は続く)。
-/// 使わないまま `OAUTH_IDLE_DAYS` を過ぎた連携は、ここで断る。`gid` を持たない昔のトークンは、署名の期限までは通す
-/// (リフレッシュすると、`gid` を持つ新しいトークンになる)
+/// 使わないまま `OAUTH_IDLE_DAYS` を過ぎた連携は、ここで断る。`gid` の無いトークンも通さない
 fn grant_is_active(app: &App, claims: &Claims) -> bool {
     let Some(gid) = claims.get("gid").and_then(Value::as_str) else {
-        return true;
+        return false;
     };
     let Some(user) = claims.get("id").and_then(Value::as_str) else {
         return false;
@@ -224,26 +221,16 @@ fn percent_decode(value: &str) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-fn legacy_cookie_removals() -> impl Iterator<Item = String> {
-    LEGACY_COOKIES
-        .iter()
-        .map(|name| format!("{name}=; {COOKIE_ATTRIBUTES}; Max-Age=0; Domain=.torosaba.net"))
-}
-
 /// 30 日のセッション Cookie
 pub fn session_cookies(token: &str) -> Vec<String> {
     let token = encode_uri_component(token);
-    std::iter::once(format!(
+    vec![format!(
         "{SESSION_COOKIE}={token}; {COOKIE_ATTRIBUTES}; Max-Age={SESSION_MAX_AGE}"
-    ))
-    .chain(legacy_cookie_removals())
-    .collect()
+    )]
 }
 
 pub fn logout_cookies() -> Vec<String> {
-    std::iter::once(format!("{SESSION_COOKIE}=; {COOKIE_ATTRIBUTES}; Max-Age=0"))
-        .chain(legacy_cookie_removals())
-        .collect()
+    vec![format!("{SESSION_COOKIE}=; {COOKIE_ATTRIBUTES}; Max-Age=0")]
 }
 
 #[cfg(test)]

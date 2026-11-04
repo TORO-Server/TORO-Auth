@@ -10,7 +10,6 @@ use axum::http::header::{self, HeaderValue};
 use axum::response::Response;
 use serde_json::json;
 
-use crate::config::Config;
 use crate::http::{self, Ctx};
 use crate::{App, auth, home, oauth, static_files};
 
@@ -82,20 +81,15 @@ fn not_found(ctx: &Ctx) -> Response {
 
 /// auth: だれなのかを確かめる
 async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
-    let cfg = &app.cfg;
-    let path = ctx.path.as_str();
-    if let Some(moved) = moved_from_auth(cfg, path) {
-        return Ok(http::moved(ctx, &moved));
-    }
-    match path {
-        "/" | "/index.html" => Ok(home::handle(app, ctx).await),
+    match ctx.path.as_str() {
+        "/" => Ok(home::handle(app, ctx).await),
 
-        "/api/auth/login" => Ok(auth::login::start(app, ctx)),
-        "/api/auth/callback" => auth::login::callback(app, ctx).await,
-        "/api/auth/me" => Ok(auth::account::me(app, ctx)),
-        "/api/auth/logout" => Ok(auth::account::logout(ctx)),
-        "/api/auth/token" => Ok(auth::account::issue_token(app, ctx)),
-        "/api/auth/session-token" => Ok(auth::account::issue_session_token(app, ctx)),
+        "/login" => Ok(auth::login::start(app, ctx)),
+        "/callback" => auth::login::callback(app, ctx).await,
+        "/session" => Ok(auth::account::me(app, ctx)),
+        "/logout" => Ok(auth::account::logout(ctx)),
+        "/token" => Ok(auth::account::issue_token(app, ctx)),
+        "/session-token" => Ok(auth::account::issue_session_token(app, ctx)),
 
         "/.well-known/oauth-authorization-server" | "/.well-known/openid-configuration" => {
             Ok(oauth::metadata::authorization_server(app, ctx))
@@ -103,24 +97,8 @@ async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
         "/oauth/register" => Ok(oauth::register::handle(ctx)),
         "/oauth/authorize" => Ok(oauth::authorize::handle(app, ctx)),
         "/oauth/token" => Ok(oauth::token::handle(app, ctx)),
-        "/oauth/userinfo" | "/userinfo" => Ok(oauth::userinfo::handle(app, ctx)),
+        "/oauth/userinfo" => Ok(oauth::userinfo::handle(app, ctx)),
 
         _ => Ok(not_found(ctx)),
-    }
-}
-
-/// 以前 auth にあった URL の移り先
-fn moved_from_auth(cfg: &Config, path: &str) -> Option<String> {
-    let (api, mcp) = (&cfg.api_url, &cfg.mcp_url);
-    match path {
-        "/api/mcp" => Some(format!("{mcp}/")),
-        "/mcp" | "/sse" => Some(format!("{mcp}{path}")),
-        "/api/docs/raw" => Some(format!("{api}/docs/raw")),
-        "/api/docs/save" => Some(format!("{api}/docs/save")),
-        "/api/openapi.json" | "/openapi.json" => Some(format!("{api}/openapi.json")),
-        _ if path.starts_with("/.well-known/oauth-protected-resource") => {
-            Some(format!("{mcp}{path}"))
-        }
-        _ => None,
     }
 }
