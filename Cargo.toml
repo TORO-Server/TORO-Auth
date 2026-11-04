@@ -1,6 +1,6 @@
 [package]
 name = "toro-auth"
-version = "2.1.0"
+version = "3.0.0"
 edition = "2024"
 description = "TORO Server の共通認証 (auth)"
 publish = false
