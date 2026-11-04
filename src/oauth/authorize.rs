@@ -16,17 +16,32 @@ use crate::http::{self, Ctx};
 use crate::jwt;
 use crate::util::{encode_uri_component, random_hex, sha256_base64url};
 
-const CSP_LOGIN: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'";
 const CSP_WITH_APPROVE: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const CONSENT_TYPE: &str = "oauth_consent";
 const CONSENT_LIFETIME: i64 = 600;
 const CODE_LIFETIME: i64 = 300;
 /// 同意の流れの中で付ける値。ログイン後に戻る URL などからは取り除く
 const FLOW_PARAMS: [&str; 5] = ["consent", "approved", "auto", "denied", "deny"];
+/// 署名して返す値の長さの上限。認可コードとトークンが大きくなりすぎないように
+const MAX_CLIENT_ID_BYTES: usize = 256;
+const MAX_REDIRECT_URI_BYTES: usize = 2048;
+const MAX_SCOPE_BYTES: usize = 256;
+const MAX_CODE_CHALLENGE_BYTES: usize = 128;
+
+/// scope は RFC 6749 の文字だけ (空白区切りの ASCII)
+fn is_valid_scope(scope: &str) -> bool {
+    scope.len() <= MAX_SCOPE_BYTES
+        && scope
+            .bytes()
+            .all(|b| b == b' ' || (b.is_ascii_graphic() && b != b'"' && b != b'\\'))
+}
 
 /// PKCE の要求が受け付けられるなら None、断るなら理由
 fn pkce_problem(ctx: &Ctx, redirect_uri: &str) -> Option<&'static str> {
     let challenge = ctx.q("code_challenge").filter(|c| !c.is_empty());
+    if challenge.is_some_and(|c| c.len() > MAX_CODE_CHALLENGE_BYTES) {
+        return Some("Query parameter \"code_challenge\" is too long");
+    }
     match (challenge, ctx.q("code_challenge_method")) {
         (Some(_), Some("S256")) => None,
         (Some(_), _) => Some("Query parameter \"code_challenge_method\" must be S256"),
@@ -64,7 +79,20 @@ fn request_fingerprint(ctx: &Ctx) -> String {
     sha256_base64url(joined.as_bytes())
 }
 
+/// ブラウザの先読みか。承認のリンクは GET なので、本人が押していないのに届くことがある
+fn is_prefetch(ctx: &Ctx) -> bool {
+    ["sec-purpose", "purpose"].iter().any(|name| {
+        ctx.headers
+            .get(*name)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.contains("prefetch") || value.contains("prerender"))
+    })
+}
+
 fn consent_is_valid(app: &App, ctx: &Ctx, session: &Session) -> bool {
+    if is_prefetch(ctx) {
+        return false;
+    }
     let Some(claims) = ctx
         .q("consent")
         .and_then(|token| jwt::verify(token, &app.cfg.jwt_secret))
@@ -162,9 +190,21 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
             400,
         );
     };
-    if !client::is_valid_redirect_uri(redirect_uri) {
+    if redirect_uri.len() > MAX_REDIRECT_URI_BYTES || !client::is_valid_redirect_uri(redirect_uri) {
         return http::html(
             pages::invalid_request(&app.cfg, "Query parameter \"redirect_uri\" is not allowed"),
+            400,
+        );
+    }
+    if client_id.len() > MAX_CLIENT_ID_BYTES {
+        return http::html(
+            pages::invalid_request(&app.cfg, "Query parameter \"client_id\" is too long"),
+            400,
+        );
+    }
+    if !ctx.q("scope").is_none_or(is_valid_scope) {
+        return http::html(
+            pages::invalid_request(&app.cfg, "Query parameter \"scope\" is not allowed"),
             400,
         );
     }
@@ -229,15 +269,13 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         HeaderValue::from_static("*"),
     );
     // 承認のボタンが出るときは枠に入れさせない (クリックジャッキング対策)。
-    // 他のサイトの枠の中には Cookie が届かずログインの案内だけが出るので、そこは今までどおり
-    res.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(if session.is_some() {
-            CSP_WITH_APPROVE
-        } else {
-            CSP_LOGIN
-        }),
-    );
+    // 他のサイトの枠の中には Cookie が届かずログインの案内だけが出るので、そこは今までどおり (http::html の既定)
+    if session.is_some() {
+        res.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CSP_WITH_APPROVE),
+        );
+    }
     res
 }
 
@@ -250,5 +288,16 @@ mod tests {
         let mut url = Url::parse("https://a.example/cb?code=old&x=1").unwrap();
         set_param(&mut url, "code", "new");
         assert_eq!(url.as_str(), "https://a.example/cb?x=1&code=new");
+    }
+
+    #[test]
+    fn scopes_are_printable_ascii_words() {
+        for good in ["", "mcp", "read write mcp", "openid profile offline_access"] {
+            assert!(is_valid_scope(good), "{good:?}");
+        }
+        for bad in ["読む", "read\tmcp", "a\"b", "a\\b", "mcp\u{202E}"] {
+            assert!(!is_valid_scope(bad), "{bad:?}");
+        }
+        assert!(!is_valid_scope(&"x".repeat(MAX_SCOPE_BYTES + 1)));
     }
 }

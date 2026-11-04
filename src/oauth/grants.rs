@@ -19,6 +19,8 @@ use crate::util::random_hex;
 const FILE_NAME: &str = "oauth-grants.json";
 /// 最後に使った時刻を、ファイルに書き出す間隔 (秒)
 const SAVE_EVERY: i64 = 300;
+/// 1 人が持てる連携の数。超えたら、いちばん長く使っていないものから消す (記録の大きさに上限を設ける)
+const MAX_GRANTS_PER_USER: usize = 32;
 
 /// 連携の ID → (利用者の ID, 作った時刻, 最後に使った時刻)
 type Grants = HashMap<String, (String, i64, i64)>;
@@ -62,6 +64,7 @@ impl GrantStore {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let mut next = inner.grants.clone();
         next.retain(|_, (_, _, last_used)| now - *last_used <= idle);
+        drop_oldest_of_user(&mut next, user_id);
         let gid = random_hex(16);
         next.insert(gid.clone(), (user_id.to_string(), now, now));
         self.save(&next)?;
@@ -109,6 +112,22 @@ impl GrantStore {
     #[cfg(test)]
     fn len(&self) -> usize {
         self.inner.lock().unwrap().grants.len()
+    }
+}
+
+/// 新しい連携を 1 つ足せるように、その人の古い連携を消す
+fn drop_oldest_of_user(grants: &mut Grants, user_id: &str) {
+    let mut own: Vec<(String, i64)> = grants
+        .iter()
+        .filter(|(_, (owner, _, _))| owner == user_id)
+        .map(|(gid, (_, _, last_used))| (gid.clone(), *last_used))
+        .collect();
+    if own.len() < MAX_GRANTS_PER_USER {
+        return;
+    }
+    own.sort_by_key(|(_, last_used)| *last_used);
+    for (gid, _) in &own[..=own.len() - MAX_GRANTS_PER_USER] {
+        grants.remove(gid);
     }
 }
 
@@ -188,6 +207,23 @@ mod tests {
             serde_json::from_slice(&std::fs::read(dir.join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(saved[&gid].2, 5000 + SAVE_EVERY);
         assert_eq!(saved.len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn one_user_cannot_pile_up_grants() {
+        let dir = temp_dir("grants-cap");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        let other = store.create("other", IDLE, 0).unwrap();
+        let gids: Vec<String> = (0..MAX_GRANTS_PER_USER as i64 + 1)
+            .map(|now| store.create("1", IDLE, now).unwrap())
+            .collect();
+        assert_eq!(store.len(), MAX_GRANTS_PER_USER + 1);
+        // いちばん古いものだけが消え、他の人の連携は巻き込まない
+        assert!(!store.touch(&gids[0], "1", IDLE, 100));
+        assert!(store.touch(&gids[1], "1", IDLE, 100));
+        assert!(store.touch(gids.last().unwrap(), "1", IDLE, 100));
+        assert!(store.touch(&other, "other", IDLE, 100));
         std::fs::remove_dir_all(dir).unwrap();
     }
 

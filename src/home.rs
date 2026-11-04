@@ -11,6 +11,8 @@ use crate::http::{self, Ctx};
 use crate::template::{escape, insert_block, render};
 
 const JST_OFFSET: i64 = 9 * 3600;
+/// トークンを画面に出すので、自分のスクリプトと画像のほかは読ませない。枠にも入れさせない
+const CSP_HOME: &str = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 pub async fn handle(app: &App, ctx: &Ctx) -> Response {
     let block = match session::from_cookie(app, ctx) {
@@ -23,10 +25,9 @@ pub async fn handle(app: &App, ctx: &Ctx) -> Response {
         &block,
     );
     let mut res = http::html(page, 200);
-    // トークン発行のボタンがあるので、枠に入れさせない
     res.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("frame-ancestors 'none'"),
+        HeaderValue::from_static(CSP_HOME),
     );
     res
 }

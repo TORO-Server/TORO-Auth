@@ -37,7 +37,7 @@ pub fn sign(claims: &Value, secret: &str) -> String {
     )
 }
 
-/// 署名と有効期限を確かめ、中身を返す
+/// 署名と有効期限を確かめ、中身を返す。発行するトークンには必ず期限を入れるので、期限の無いものは通さない
 pub fn verify(token: &str, secret: &str) -> Option<Claims> {
     let mut parts = token.split('.');
     let (header, payload, signature) = (parts.next()?, parts.next()?, parts.next()?);
@@ -59,9 +59,8 @@ pub fn verify(token: &str, secret: &str) -> Option<Claims> {
 
     let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
     let claims = claims.as_object()?.clone();
-    if let Some(exp) = claims.get("exp").and_then(Value::as_f64)
-        && (now() as f64) > exp
-    {
+    let exp = claims.get("exp").and_then(Value::as_f64)?;
+    if (now() as f64) > exp {
         return None;
     }
     Some(claims)
@@ -81,12 +80,19 @@ mod tests {
 
     #[test]
     fn verifies_tokens_from_other_implementations() {
-        // RFC 7519 の形式の、広く知られた例 (jwt.io)
-        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        // RFC 7519 の形式の、広く知られた例 (jwt.io) に期限を足し、別の実装 (.NET の HMACSHA256) で署名したもの
+        let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjQxMDI0NDQ4MDB9.2rJa0xN9x5QZQTvUhAcOtrF5qH6iGAmgFeTThC4mq8o";
         assert_eq!(
             verify(token, "your-256-bit-secret").unwrap()["name"],
             "John Doe"
         );
+    }
+
+    #[test]
+    fn rejects_tokens_without_a_numeric_expiry() {
+        assert!(verify(&sign(&json!({"id": "1"}), SECRET), SECRET).is_none());
+        assert!(verify(&sign(&json!({"id": "1", "exp": "never"}), SECRET), SECRET).is_none());
+        assert!(verify(&sign(&json!({"id": "1", "exp": null}), SECRET), SECRET).is_none());
     }
 
     #[test]

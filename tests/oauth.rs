@@ -321,6 +321,42 @@ async fn consent_is_bound_to_the_request_and_the_user() {
 }
 
 #[tokio::test]
+async fn browser_prefetches_do_not_approve() {
+    let server = start().await;
+    let cookie = server.login("member").await;
+    let page = server
+        .get_with_cookie(&authorize_path(CLIENT_REDIRECT, ""), &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    let approve = approve_link(&page);
+
+    for (name, value) in [
+        ("sec-purpose", "prefetch"),
+        ("sec-purpose", "prefetch;prerender"),
+        ("purpose", "prefetch"),
+    ] {
+        let res = server
+            .client
+            .get(server.url(&approve))
+            .header(header::COOKIE, &cookie)
+            .header(name, value)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "{name}: {value}");
+        assert!(res.headers().get(header::LOCATION).is_none());
+    }
+
+    // 先読みでは consent を使い切らないので、本人が押せば通る
+    assert_eq!(
+        server.get_with_cookie(&approve, &cookie).await.status(),
+        302
+    );
+}
+
+#[tokio::test]
 async fn codes_can_be_used_once() {
     let server = start().await;
     let cookie = server.login("member").await;
@@ -585,12 +621,99 @@ async fn oauth_access_tokens_get_roles_too() {
     assert_eq!(claims["roles_source"], "live");
 }
 
+#[tokio::test]
+async fn oauth_tokens_lose_edit_rights_with_the_role() {
+    // ロールを持っていたころに発行された OAuth のトークンでも、確認の窓口の答えはいまのロールで決まる
+    let server = start_with(|cfg| {
+        cfg.discord_bot_token = Some("bot-token".into());
+        cfg.discord_required_role_id = Some("role-z".into());
+    })
+    .await;
+    let (access, refresh) = issue_tokens(&server).await;
+    for token in [access, renew_access_token(&server, &refresh).await] {
+        let mut issued_earlier = jwt::verify(&token, JWT_SECRET).unwrap();
+        issued_earlier.insert("can_edit".into(), json!(true));
+        let token = jwt::sign(&Value::Object(issued_earlier), JWT_SECRET);
+        let claims = server.introspect(&token).await.unwrap();
+        assert_eq!(claims["roles_source"], "live");
+        assert_eq!(claims["can_edit"], false);
+    }
+}
+
+async fn renew_access_token(server: &TestServer, refresh: &str) -> String {
+    let renewed: Value = refresh_with(server, refresh).await.json().await.unwrap();
+    renewed["access_token"].as_str().unwrap().to_string()
+}
+
 async fn refresh_with(server: &TestServer, refresh: &str) -> reqwest::Response {
     token_request(
         server,
         &[("grant_type", "refresh_token"), ("refresh_token", refresh)],
     )
     .await
+}
+
+#[tokio::test]
+async fn refreshed_tokens_keep_the_scope_and_the_client() {
+    let server = start().await;
+    let (_, refresh) = issue_tokens(&server).await;
+
+    let res = token_request(
+        &server,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", &refresh),
+            ("client_id", "other-client"),
+        ],
+    )
+    .await;
+    assert_eq!(res.status(), 400);
+    assert_eq!(
+        res.json::<Value>().await.unwrap()["error_description"],
+        "client_id mismatch"
+    );
+
+    for extra in [None, Some(("client_id", "toro-ai-1"))] {
+        let mut params = vec![
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh.as_str()),
+        ];
+        params.extend(extra);
+        let res = token_request(&server, &params).await;
+        assert_eq!(res.status(), 200);
+        let renewed: Value = res.json().await.unwrap();
+        let access = jwt::verify(renewed["access_token"].as_str().unwrap(), JWT_SECRET).unwrap();
+        assert_eq!(access["scope"], "mcp");
+        assert_eq!(access["aud"], "toro-ai-1");
+        assert_eq!(access["type"], "mcp_access_token");
+        assert_eq!(renewed["scope"], "mcp");
+    }
+}
+
+#[tokio::test]
+async fn oversized_and_unreadable_requests_are_refused_before_the_consent_page() {
+    let server = start().await;
+    let target = encode_uri_component(CLIENT_REDIRECT);
+    let challenge = sha256_base64url(VERIFIER.as_bytes());
+    let base = format!(
+        "/oauth/authorize?code_challenge={challenge}&code_challenge_method=S256&redirect_uri={target}"
+    );
+    for query in [
+        format!("{base}&client_id={}", "x".repeat(257)),
+        format!("{base}&scope={}", "x".repeat(257)),
+        format!("{base}&scope={}", encode_uri_component("読む")),
+        format!(
+            "/oauth/authorize?code_challenge={}&code_challenge_method=S256&redirect_uri={target}",
+            "x".repeat(129)
+        ),
+        format!(
+            "/oauth/authorize?code_challenge={challenge}&code_challenge_method=S256&redirect_uri={}",
+            encode_uri_component(&format!("{CLIENT_REDIRECT}?a={}", "x".repeat(2048)))
+        ),
+    ] {
+        let res = server.get(&query).await;
+        assert_eq!(res.status(), 400, "{query}");
+    }
 }
 
 #[tokio::test]

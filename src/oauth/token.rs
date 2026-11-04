@@ -104,7 +104,8 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
         return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
     };
 
-    let scope = claim(&claims, "scope").unwrap_or(DEFAULT_SCOPE).to_string();
+    // scope の無いトークンは、本人が発行したトークンの扱いになる。OAuth のトークンには必ず入れる (無ければ読むだけ)
+    let scope = claim(&claims, "scope").unwrap_or("read").to_string();
     if let Some(expected_client_id) = claim(&claims, "client_id")
         && let Some(client_id) = param(params, "client_id")
         && client_id != expected_client_id
@@ -127,6 +128,10 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     };
     // 使っている間は続くよう、リフレッシュトークンも新しくして、署名の期限を延ばす
     let new_refresh = sign_refresh(app, &claims, &gid, now);
+    if let Some(client_id) = claim(&claims, "client_id").map(str::to_string) {
+        claims.insert("aud".into(), json!(client_id));
+    }
+    claims.insert("scope".into(), json!(scope));
     claims.insert("gid".into(), json!(gid));
     claims.insert("iss".into(), json!(app.cfg.issuer));
     claims.insert("type".into(), json!(ACCESS_TOKEN_TYPE));
@@ -247,6 +252,7 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
             "can_edit": can_edit,
             "scope": scope,
             "gid": gid,
+            "client_id": claim(&payload, "client_id"),
             "type": REFRESH_TOKEN_TYPE,
             "iat": now,
             "exp": now + REFRESH_TOKEN_LIFETIME,

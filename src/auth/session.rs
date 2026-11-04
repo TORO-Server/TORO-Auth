@@ -7,6 +7,7 @@
 //! - `from_bearer`: Bearer を付けて auth を呼ぶクライアント (api / mcp は `internal` で確かめる)
 //! - `from_cookie`: ブラウザでの読み取りと、同意の画面
 //! - `from_cookie_for_write`: ブラウザでの変更 (Origin を確かめる。CSRF 対策)
+//! - `from_cookie_on_own_page`: auth 自身の画面からだけの変更 (90 日トークン)
 //! - `from_request`: 自分の情報の確認のように、どちらも受け付けるもの
 //!
 //! トークンの種類の確認は `decode_access_token` の 1 か所で行う。
@@ -100,6 +101,11 @@ pub fn scope_allows_write(scope: &str) -> bool {
     scope.split_whitespace().any(|s| s == "write" || s == "mcp")
 }
 
+/// scope が mcp の管理用のツールまで許しているか (実際に使えるのは Admin 以上のロールの人だけ)
+pub fn scope_allows_admin_tools(scope: &str) -> bool {
+    scope.split_whitespace().any(|s| s == "mcp")
+}
+
 /// 利用者の権限を表すトークンだけを通す。
 /// 同じ鍵で署名した認可コードやリフレッシュトークンを、アクセストークンとして使わせない
 pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
@@ -168,6 +174,14 @@ pub fn from_cookie(app: &App, ctx: &Ctx) -> Option<Session> {
 /// ブラウザからの変更。Cookie は他のサブドメインからのリクエストにも付くので、送り元を確かめる
 pub fn from_cookie_for_write(app: &App, ctx: &Ctx) -> Option<Session> {
     if !ctx.origin_trusted {
+        return None;
+    }
+    from_cookie(app, ctx)
+}
+
+/// auth 自身の画面からの変更。長く使えるトークンは、Wiki の画面からも作らせない
+pub fn from_cookie_on_own_page(app: &App, ctx: &Ctx) -> Option<Session> {
+    if ctx.header(header::ORIGIN) != app.cfg.issuer {
         return None;
     }
     from_cookie(app, ctx)
