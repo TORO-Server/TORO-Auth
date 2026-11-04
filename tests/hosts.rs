@@ -32,8 +32,8 @@ async fn old_urls_on_auth_move_to_the_right_host() {
     let server = start().await;
     for (old, new) in [
         ("/api/mcp", "https://mcp.torosaba.net/"),
-        ("/mcp", "https://mcp.torosaba.net/mcp"),
-        ("/sse", "https://mcp.torosaba.net/sse"),
+        ("/mcp", "https://mcp.torosaba.net/"),
+        ("/sse", "https://mcp.torosaba.net/"),
         ("/api/openapi.json", "https://api.torosaba.net/openapi.json"),
         ("/openapi.json", "https://api.torosaba.net/openapi.json"),
         ("/api/docs/save", "https://api.torosaba.net/docs/save"),
@@ -76,7 +76,7 @@ async fn session_tokens_are_short_and_checked_by_introspection() {
 
     let res = server
         .client
-        .post(server.url("/api/auth/session-token"))
+        .post(server.url("/session-token"))
         .header(header::COOKIE, &cookie)
         .header(header::ORIGIN, WIKI_ORIGIN)
         .send()
@@ -100,7 +100,7 @@ async fn session_tokens_are_short_and_checked_by_introspection() {
 async fn session_tokens_need_the_cookie_a_trusted_origin_and_post() {
     let server = start().await;
     let cookie = server.login("member").await;
-    let path = server.url("/api/auth/session-token");
+    let path = server.url("/session-token");
 
     for origin in [Some("https://assets.torosaba.net"), None] {
         let mut request = server.client.post(&path).header(header::COOKIE, &cookie);
@@ -155,7 +155,7 @@ async fn introspection_only_answers_on_the_internal_port() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    for path in ["/", "/api/auth/me", "/oauth/token"] {
+    for path in ["/", "/session", "/oauth/token"] {
         let res = server.client.get(internal(path)).send().await.unwrap();
         assert_eq!(res.status(), 404, "{path}");
     }
@@ -219,7 +219,7 @@ async fn pages_take_their_urls_from_the_config() {
 
     // 以前の URL の転送先も、設定から作る
     let res = server.get("/mcp").await;
-    assert_eq!(location(&res), "https://mcp.example.test/mcp");
+    assert_eq!(location(&res), "https://mcp.example.test/");
     let res = server.get("/api/docs/raw").await;
     assert_eq!(location(&res), "https://api.example.test/docs/raw");
 }
@@ -238,7 +238,7 @@ async fn asset_urls_change_with_each_version() {
 async fn token_script_is_served_without_types() {
     let server = start().await;
     let script = server.get("/_assets/token.js").await.text().await.unwrap();
-    assert!(script.contains("/api/auth/token"));
+    assert!(script.contains("/token"));
     assert!(!script.contains("TokenResponse"));
     assert!(!script.contains("HTMLButtonElement"));
 }

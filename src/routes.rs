@@ -88,14 +88,17 @@ async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
         return Ok(http::moved(ctx, &moved));
     }
     match path {
-        "/" | "/index.html" => Ok(home::handle(app, ctx).await),
+        "/" => Ok(home::handle(app, ctx).await),
 
-        "/api/auth/login" => Ok(auth::login::start(app, ctx)),
-        "/api/auth/callback" => auth::login::callback(app, ctx).await,
-        "/api/auth/me" => Ok(auth::account::me(app, ctx)),
-        "/api/auth/logout" => Ok(auth::account::logout(ctx)),
-        "/api/auth/token" => Ok(auth::account::issue_token(app, ctx)),
-        "/api/auth/session-token" => Ok(auth::account::issue_session_token(app, ctx)),
+        // `/api/auth/*` は以前の場所。Discord に登録済みの戻り先や、動いている画面のために、同じに答える
+        "/login" | "/api/auth/login" => Ok(auth::login::start(app, ctx)),
+        "/callback" | "/api/auth/callback" => auth::login::callback(app, ctx).await,
+        "/session" | "/api/auth/me" => Ok(auth::account::me(app, ctx)),
+        "/logout" | "/api/auth/logout" => Ok(auth::account::logout(ctx)),
+        "/token" | "/api/auth/token" => Ok(auth::account::issue_token(app, ctx)),
+        "/session-token" | "/api/auth/session-token" => {
+            Ok(auth::account::issue_session_token(app, ctx))
+        }
 
         "/.well-known/oauth-authorization-server" | "/.well-known/openid-configuration" => {
             Ok(oauth::metadata::authorization_server(app, ctx))
@@ -114,7 +117,7 @@ fn moved_from_auth(cfg: &Config, path: &str) -> Option<String> {
     let (api, mcp) = (&cfg.api_url, &cfg.mcp_url);
     match path {
         "/api/mcp" => Some(format!("{mcp}/")),
-        "/mcp" | "/sse" => Some(format!("{mcp}{path}")),
+        "/mcp" | "/sse" => Some(format!("{mcp}/")),
         "/api/docs/raw" => Some(format!("{api}/docs/raw")),
         "/api/docs/save" => Some(format!("{api}/docs/save")),
         "/api/openapi.json" | "/openapi.json" => Some(format!("{api}/openapi.json")),

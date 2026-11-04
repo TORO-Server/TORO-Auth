@@ -145,7 +145,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         jwt_secret: JWT_SECRET.into(),
         discord_client_id: "client".into(),
         discord_client_secret: "secret".into(),
-        discord_redirect_uri: format!("{base}/api/auth/callback"),
+        discord_redirect_uri: format!("{base}/callback"),
         discord_guild_id: GUILD.into(),
         discord_required_role_id: None,
         discord_bot_token: None,
@@ -219,7 +219,7 @@ impl TestServer {
     pub async fn session_token(&self, cookie: &str) -> String {
         let res = self
             .client
-            .post(self.url("/api/auth/session-token"))
+            .post(self.url("/session-token"))
             .header(header::COOKIE, cookie)
             .header(header::ORIGIN, WIKI_ORIGIN)
             .send()
@@ -243,7 +243,7 @@ impl TestServer {
     pub async fn login_to(&self, code: &str, redirect: &str) -> (String, String) {
         let start = self
             .get(&format!(
-                "/api/auth/login?redirect={}",
+                "/login?redirect={}",
                 toro_auth::util::encode_uri_component(redirect)
             ))
             .await;
@@ -254,7 +254,7 @@ impl TestServer {
         let callback = self
             .get_with_cookie(
                 &format!(
-                    "/api/auth/callback?code={code}&state={}",
+                    "/callback?code={code}&state={}",
                     toro_auth::util::encode_uri_component(&state)
                 ),
                 &nonce,

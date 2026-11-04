@@ -435,7 +435,7 @@ async fn only_access_tokens_work_as_bearer() {
     for token in [refresh, code.as_str()] {
         let me: Value = server
             .client
-            .get(server.url("/api/auth/me"))
+            .get(server.url("/session"))
             .bearer_auth(token)
             .send()
             .await

@@ -78,10 +78,7 @@ impl Config {
             internal_port: or_default("INTERNAL_PORT", "8081")
                 .parse()
                 .map_err(|_| "INTERNAL_PORT must be a number".to_string())?,
-            discord_redirect_uri: or_default(
-                "DISCORD_REDIRECT_URI",
-                &format!("{issuer}/api/auth/callback"),
-            ),
+            discord_redirect_uri: or_default("DISCORD_REDIRECT_URI", &format!("{issuer}/callback")),
             issuer,
             api_url: trimmed("PUBLIC_API_URL", "https://api.torosaba.net"),
             mcp_url: trimmed("PUBLIC_MCP_URL", "https://mcp.torosaba.net"),
