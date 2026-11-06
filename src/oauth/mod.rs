@@ -20,4 +20,6 @@ pub mod userinfo;
 
 pub(crate) const CODE_TYPE: &str = "oauth_code";
 pub(crate) const REFRESH_TOKEN_TYPE: &str = "mcp_refresh_token";
-pub(crate) const DEFAULT_SCOPE: &str = "read write mcp";
+// scope を省いたクライアントへの既定は読み取りだけにする。write と mcp は、
+// クライアントが明示して求め、同意画面に出たときだけ発行する
+pub(crate) const DEFAULT_SCOPE: &str = "read";

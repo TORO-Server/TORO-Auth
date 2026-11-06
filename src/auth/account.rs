@@ -60,13 +60,13 @@ pub fn issue_session_token(app: &App, ctx: &Ctx) -> Response {
     )
 }
 
-/// 90 日トークンの発行と再作成。本人のブラウザからだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)。
+/// 90 日トークンの発行と再作成。本人のブラウザの、auth の画面からだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)。
 /// トークンを返すのはこの応答の一度だけで、前のトークンは使えなくなる
 pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     if ctx.method != Method::POST {
         return http::error(ctx, "Method Not Allowed", 405);
     }
-    let Some(session) = session::from_cookie_for_write(app, ctx) else {
+    let Some(session) = session::from_cookie_on_own_page(app, ctx) else {
         return http::error(ctx, "Authentication required to generate API token", 401);
     };
 

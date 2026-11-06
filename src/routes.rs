@@ -1,6 +1,7 @@
 //! URL から各機能への振り分け。auth は 1 つの役割だけを受け持つので、ホストでは分けない
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::to_bytes;
@@ -20,32 +21,7 @@ pub fn router(app: Arc<App>) -> Router {
 }
 
 async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
-    // 同時に処理する数を限り、ボディの分も含めてメモリの使用量に上限を設ける
-    let Ok(_permit) = app.requests.try_acquire() else {
-        return http::busy();
-    };
-
-    let (parts, body) = request.into_parts();
-    let body = match to_bytes(body, MAX_BODY_BYTES).await {
-        Ok(body) => body,
-        Err(_) => {
-            let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
-            return http::json(&ctx, &json!({ "error": "Payload Too Large" }), 413);
-        }
-    };
-    let ctx = Ctx::new(&parts, body, &app.cfg);
-
-    let mut res = match route(&app, &ctx).await {
-        Ok(res) => res,
-        Err(message) => {
-            eprintln!("{} {}: {message}", ctx.method, ctx.path);
-            http::json(
-                &ctx,
-                &json!({ "error": "Internal Server Error", "message": message }),
-                500,
-            )
-        }
-    };
+    let mut res = answer(&app, request).await;
     let headers = res.headers_mut();
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
@@ -58,6 +34,42 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
     res
 }
 
+async fn answer(app: &App, request: Request) -> Response {
+    let (parts, body) = request.into_parts();
+    // 稼働確認は、同時処理の枠を使わない (混んでいるだけで、止まっていると見なされないように)
+    if parts.uri.path() == "/healthz" {
+        let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
+        return http::json(&ctx, &json!({ "ok": true }), 200);
+    }
+    // 同時に処理する数を限り、ボディの分も含めてメモリの使用量に上限を設ける
+    let Ok(_permit) = app.requests.try_acquire() else {
+        return http::busy();
+    };
+
+    let wait = Duration::from_secs(app.cfg.body_read_timeout_secs);
+    let body = match tokio::time::timeout(wait, to_bytes(body, MAX_BODY_BYTES)).await {
+        Ok(Ok(body)) => body,
+        Ok(Err(_)) => {
+            let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
+            return http::json(&ctx, &json!({ "error": "Payload Too Large" }), 413);
+        }
+        Err(_) => {
+            let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
+            return http::json(&ctx, &json!({ "error": "Request Timeout" }), 408);
+        }
+    };
+    let ctx = Ctx::new(&parts, body, &app.cfg);
+
+    match route(app, &ctx).await {
+        Ok(res) => res,
+        // 中身はログにだけ残す (内側の事情を外に見せない)
+        Err(message) => {
+            eprintln!("{} {}: {message}", ctx.method, ctx.path);
+            http::json(&ctx, &json!({ "error": "Internal Server Error" }), 500)
+        }
+    }
+}
+
 async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
     if ctx.method == Method::OPTIONS {
         return Ok(http::no_content(http::cors_headers(ctx)));
@@ -65,9 +77,6 @@ async fn route(app: &App, ctx: &Ctx) -> Result<Response, String> {
 
     let path = ctx.path.as_str();
 
-    if path == "/healthz" {
-        return Ok(http::json(ctx, &json!({ "ok": true }), 200));
-    }
     if let Some(res) = static_files::serve(path) {
         return Ok(res);
     }

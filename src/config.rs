@@ -26,6 +26,8 @@ pub struct Config {
     pub state_dir: String,
     /// OAuth の連携を、使わないまま置いてよい秒数。これを過ぎた連携は、トークンが通らなくなる (使っている間は続く)
     pub oauth_idle_seconds: i64,
+    /// リクエストのボディを読み切るまで待つ秒数。遅い送信で同時処理の枠を埋めさせない
+    pub body_read_timeout_secs: u64,
 }
 
 fn optional(name: &str) -> Option<String> {
@@ -98,6 +100,7 @@ impl Config {
                 .filter(|days| *days > 0)
                 .ok_or_else(|| "OAUTH_IDLE_DAYS must be a positive number".to_string())?
                 * 86400,
+            body_read_timeout_secs: 30,
         })
     }
 }

@@ -94,12 +94,10 @@ pub async fn callback(app: &App, ctx: &Ctx) -> Result<Response, String> {
 
     let access_token = match discord::exchange_code(app, code).await? {
         Ok(token) => token,
+        // Discord の説明はログにだけ残す
         Err(detail) => {
-            return Ok(http::error(
-                ctx,
-                &format!("Failed to exchange Discord code: {detail}"),
-                400,
-            ));
+            eprintln!("discord: code exchange failed: {detail}");
+            return Ok(http::error(ctx, "Failed to exchange Discord code", 400));
         }
     };
     let Some(user) = discord::fetch_user(app, &access_token).await else {
@@ -118,10 +116,10 @@ pub async fn callback(app: &App, ctx: &Ctx) -> Result<Response, String> {
         );
         return Ok(http::html(page, 403));
     }
-    let can_edit = match &app.cfg.discord_required_role_id {
-        Some(role) => membership.roles.contains(role),
-        None => true,
-    };
+    let can_edit = discord::roles_allow_edit(
+        app.cfg.discord_required_role_id.as_deref(),
+        &membership.roles,
+    );
 
     let now = jwt::now();
     let token = jwt::sign(

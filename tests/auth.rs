@@ -218,7 +218,7 @@ async fn api_token_requires_post_and_session() {
         .client
         .post(server.url("/token"))
         .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
+        .header(header::ORIGIN, &server.base)
         .send()
         .await
         .unwrap();
@@ -250,7 +250,7 @@ async fn issue_token(server: &TestServer, cookie: &str) -> String {
         .client
         .post(server.url("/token"))
         .header(header::COOKIE, cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
+        .header(header::ORIGIN, &server.base)
         .send()
         .await
         .unwrap();
@@ -363,7 +363,7 @@ async fn failing_to_save_the_record_issues_no_token() {
         .client
         .post(server.url("/token"))
         .header(header::COOKIE, &cookie)
-        .header(header::ORIGIN, WIKI_ORIGIN)
+        .header(header::ORIGIN, &server.base)
         .send()
         .await
         .unwrap();
