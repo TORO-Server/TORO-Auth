@@ -327,13 +327,20 @@ async fn consent_page_says_what_admins_also_grant() {
         async move { request.send().await.unwrap().text().await.unwrap() }
     };
 
-    // mcp を求めるときは書く。scope を省くと既定の read write mcp になるので、同じ
-    for scope in [Some("mcp"), Some("read write mcp"), None] {
+    // mcp を求めるときは書く
+    for scope in [Some("mcp"), Some("read write mcp")] {
         let page = page_for(scope).await;
         assert!(page.contains(ADMIN_LINE), "{scope:?}");
         assert!(page.contains("Discord ボットの操作"), "{scope:?}");
         assert!(!page.contains("{{"), "{scope:?}");
     }
+    // scope を省くと既定の read だけになるので、管理者向けの行は出ない
+    let page = page_for(None).await;
+    assert!(page.contains("求める権限: read"));
+    assert!(!page.contains(ADMIN_LINE));
+    assert!(!page.contains("Discord ボットの操作"));
+    assert!(!page.contains("{{"));
+
     for scope in ["read", "read write", "mcpx", ""] {
         let page = page_for(Some(scope)).await;
         assert!(!page.contains(ADMIN_LINE), "{scope:?}");

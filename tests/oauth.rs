@@ -815,6 +815,50 @@ async fn tokens_without_a_grant_are_refused() {
 }
 
 #[tokio::test]
+async fn omitted_scope_defaults_to_read_only() {
+    let server = start().await;
+    let cookie = server.login("member").await;
+    let challenge = sha256_base64url(VERIFIER.as_bytes());
+    let path = format!(
+        "/oauth/authorize?client_id=toro-ai-1&response_type=code&state=st%20ate&code_challenge={challenge}&code_challenge_method=S256&redirect_uri={}",
+        encode_uri_component(CLIENT_REDIRECT)
+    );
+
+    // 同意画面でも、求める権限は読み取りだけと出る
+    let page = server
+        .get_with_cookie(&path, &cookie)
+        .await
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("求める権限: read"), "{page}");
+    assert!(!page.contains("Wiki の編集と保存"), "{page}");
+
+    let res = server.get_with_cookie(&approve_link(&page), &cookie).await;
+    assert_eq!(res.status(), 302);
+    let code = query_param(&location(&res), "code").unwrap();
+
+    let res = exchange(&server, &code).await;
+    assert_eq!(res.status(), 200);
+    let tokens: Value = res.json().await.unwrap();
+    assert_eq!(tokens["scope"], "read");
+
+    // リフレッシュで権限が広がることもない
+    let res = token_request(
+        &server,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", tokens["refresh_token"].as_str().unwrap()),
+            ("client_id", "toro-ai-1"),
+        ],
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    let renewed: Value = res.json().await.unwrap();
+    assert_eq!(renewed["scope"], "read");
+}
+
+#[tokio::test]
 async fn a_lost_grant_record_invalidates_the_tokens() {
     // 連携の記録が無い (失った・偽の) gid のトークンは、署名が正しくても通さない
     let server = start().await;
