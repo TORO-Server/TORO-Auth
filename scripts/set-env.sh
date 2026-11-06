@@ -5,9 +5,12 @@
 set -euo pipefail
 
 ENV_FILE="${TORO_AUTH_ENV:-/home/toroserver/toro-auth.env}"
-DISCORD_CLIENT_ID="0000000000000000000"
 
 [ -f "$ENV_FILE" ] || { echo "$ENV_FILE がありません" >&2; exit 1; }
+
+# Client ID は env ファイルから読む (リポジトリに実値を書かない)
+DISCORD_CLIENT_ID=$(grep '^DISCORD_CLIENT_ID=' "$ENV_FILE" | tail -n 1 | cut -d '=' -f 2-)
+[ -n "$DISCORD_CLIENT_ID" ] || { echo "DISCORD_CLIENT_ID が $ENV_FILE にありません" >&2; exit 1; }
 
 # 値を置き換えて、同じ場所にまるごと書き戻す (途中で失敗しても壊さない)
 set_value() {
