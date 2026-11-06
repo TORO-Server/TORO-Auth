@@ -1,4 +1,4 @@
-//! 環境変数からの設定。秘密でない値の既定は、本番の値にしてある (秘密だけを env ファイルに書けばよい)
+//! 環境変数からの設定。秘密と Discord の ID は env で必須 (リポジトリに実値を書かない)。それ以外の値の既定は本番の値にしてある
 
 #[derive(Clone)]
 pub struct Config {
@@ -56,6 +56,8 @@ impl Config {
         };
         let jwt_secret = required("JWT_SECRET");
         let discord_client_secret = required("DISCORD_CLIENT_SECRET");
+        let discord_client_id = required("DISCORD_CLIENT_ID");
+        let discord_guild_id = required("DISCORD_GUILD_ID");
         if !missing.is_empty() {
             return Err(format!(
                 "missing environment variables: {}",
@@ -83,9 +85,9 @@ impl Config {
                 .filter(|origin| !origin.is_empty())
                 .collect(),
             jwt_secret,
-            discord_client_id: or_default("DISCORD_CLIENT_ID", "0000000000000000000"),
+            discord_client_id,
             discord_client_secret,
-            discord_guild_id: or_default("DISCORD_GUILD_ID", "000000000000000000"),
+            discord_guild_id,
             discord_required_role_id: optional("DISCORD_REQUIRED_ROLE_ID"),
             discord_bot_token: optional("DISCORD_BOT_TOKEN"),
             discord_api: trimmed("DISCORD_API", "https://discord.com/api/v10"),
