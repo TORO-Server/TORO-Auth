@@ -19,13 +19,46 @@ use crate::util::random_hex;
 const FILE_NAME: &str = "oauth-grants.json";
 /// 最後に使った時刻を、ファイルに書き出す間隔 (秒)
 const SAVE_EVERY: i64 = 300;
+/// 1 人が持てる連携の数。超えたら、いちばん長く使っていないものから消す (記録の大きさに上限を設ける)
+const MAX_GRANTS_PER_USER: usize = 32;
 
 /// 連携の ID → (利用者の ID, 作った時刻, 最後に使った時刻)
-type Grants = HashMap<String, (String, i64, i64)>;
+type Grants = HashMap<String, (String, i64, i64, Option<String>)>;
+
+/// 世代 (Grants の 4 つ目) の記録が無かった頃のファイルの形。読み込み時に移し替える
+type LegacyGrants = HashMap<String, (String, i64, i64)>;
+
+/// 保存内容を読み解く。世代の記録が無い古い形だった場合は、世代なしとして
+/// 移し替える (記録の形が変わっただけで連携を締め出さない)。
+fn parse_grants(bytes: &[u8]) -> Result<Grants, serde_json::Error> {
+    match serde_json::from_slice::<Grants>(bytes) {
+        Ok(grants) => Ok(grants),
+        Err(_) => serde_json::from_slice::<LegacyGrants>(bytes).map(|legacy| {
+            legacy
+                .into_iter()
+                .map(|(gid, (user_id, created, last_used))| {
+                    (gid, (user_id, created, last_used, None))
+                })
+                .collect()
+        }),
+    }
+}
 
 struct Inner {
     grants: Grants,
     last_saved: i64,
+}
+
+/// リフレッシュトークンの世代照合の結果
+pub enum RefreshRotation {
+    /// 世代が合い、次へ進めた。次に発行するリフレッシュトークンへ入れる世代
+    Advanced(String),
+    /// 回転済み (または世代の記録が始まる前) のトークンが再び提示された。連携は無効化済み
+    ReuseDetected,
+    /// 連携が無い、他人の連携、または使っていない期間が長すぎる (touch が false を返す条件)
+    Invalid,
+    /// 世代の記録を保存できなかった。連携の状態は変えていない
+    SaveFailed,
 }
 
 pub struct GrantStore {
@@ -38,7 +71,7 @@ impl GrantStore {
     pub fn load(state_dir: &str) -> Self {
         let path = Path::new(state_dir).join(FILE_NAME);
         let grants = match std::fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+            Ok(bytes) => parse_grants(&bytes).unwrap_or_else(|e| {
                 eprintln!("{}: {e}", path.display());
                 HashMap::new()
             }),
@@ -59,22 +92,97 @@ impl GrantStore {
 
     /// 新しい連携を作って、その ID を返す。保存できなければ何も作らない
     pub fn create(&self, user_id: &str, idle: i64, now: i64) -> std::io::Result<String> {
+        self.create_with_generation(user_id, idle, now, None)
+    }
+
+    /// 連携を作り、初回のリフレッシュトークンの世代もあわせて記録する
+    pub fn create_with_refresh_jti(
+        &self,
+        user_id: &str,
+        idle: i64,
+        now: i64,
+        refresh_jti: &str,
+    ) -> std::io::Result<String> {
+        self.create_with_generation(user_id, idle, now, Some(refresh_jti.to_string()))
+    }
+
+    fn create_with_generation(
+        &self,
+        user_id: &str,
+        idle: i64,
+        now: i64,
+        refresh_jti: Option<String>,
+    ) -> std::io::Result<String> {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
         let mut next = inner.grants.clone();
-        next.retain(|_, (_, _, last_used)| now - *last_used <= idle);
+        next.retain(|_, (_, _, last_used, _)| now - *last_used <= idle);
+        drop_oldest_of_user(&mut next, user_id);
         let gid = random_hex(16);
-        next.insert(gid.clone(), (user_id.to_string(), now, now));
+        next.insert(gid.clone(), (user_id.to_string(), now, now, refresh_jti));
         self.save(&next)?;
         inner.grants = next;
         inner.last_saved = now;
         Ok(gid)
     }
 
+    /// リフレッシュトークンの世代を照合し、世代を 1 つ進める。
+    ///
+    /// 提示された世代が記録どおりなら新しい世代を返し、その世代を記録する。
+    /// 回転済みの世代や、世代の記録が始まる前のトークンが後から提示されたら、
+    /// 再利用とみなして連携ごと無効にする。世代の記録が無い連携と、世代を
+    /// 持たない (この仕組みより前の) トークンの組み合わせは、締め出しを
+    /// 避けるため最初の 1 回だけ受け入れて記録を始める。
+    /// 世代の進展と無効化は、再起動で巻き戻らないようその場で保存する。
+    pub fn rotate_refresh(
+        &self,
+        gid: &str,
+        user_id: &str,
+        presented: Option<&str>,
+        idle: i64,
+        now: i64,
+    ) -> RefreshRotation {
+        let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some((owner, _, last_used, current)) = inner.grants.get(gid).cloned() else {
+            return RefreshRotation::Invalid;
+        };
+        if owner != user_id {
+            return RefreshRotation::Invalid;
+        }
+        if now - last_used > idle {
+            inner.grants.remove(gid);
+            return RefreshRotation::Invalid;
+        }
+        let reuse = match (presented, current.as_deref()) {
+            (Some(p), Some(recorded)) => p != recorded,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if reuse {
+            inner.grants.remove(gid);
+            if let Err(e) = self.save(&inner.grants) {
+                eprintln!("{}: {e}", self.path.display());
+            }
+            return RefreshRotation::ReuseDetected;
+        }
+        let next_jti = random_hex(16);
+        let mut next = inner.grants.clone();
+        let entry = next.get_mut(gid).expect("grant checked above");
+        entry.2 = entry.2.max(now);
+        entry.3 = Some(next_jti.clone());
+        if let Err(e) = self.save(&next) {
+            eprintln!("{}: {e}", self.path.display());
+            return RefreshRotation::SaveFailed;
+        }
+        inner.grants = next;
+        inner.last_saved = now;
+        RefreshRotation::Advanced(next_jti)
+    }
+
     /// 連携が有効なら、最後に使った時刻を `now` にして true。
     /// 無い (作った覚えが無い・失った) か、最後に使ってから `idle` 秒を過ぎていたら false (過ぎたものは消す)
     pub fn touch(&self, gid: &str, user_id: &str, idle: i64, now: i64) -> bool {
         let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
-        let Some((owner, _, last_used)) = inner.grants.get_mut(gid) else {
+        let Some((owner, _, last_used, _)) = inner.grants.get_mut(gid) else {
             return false;
         };
         if owner != user_id {
@@ -88,7 +196,7 @@ impl GrantStore {
         if now - inner.last_saved >= SAVE_EVERY {
             inner
                 .grants
-                .retain(|_, (_, _, last_used)| now - *last_used <= idle);
+                .retain(|_, (_, _, last_used, _)| now - *last_used <= idle);
             match self.save(&inner.grants) {
                 Ok(()) => inner.last_saved = now,
                 Err(e) => eprintln!("{}: {e}", self.path.display()),
@@ -109,6 +217,22 @@ impl GrantStore {
     #[cfg(test)]
     fn len(&self) -> usize {
         self.inner.lock().unwrap().grants.len()
+    }
+}
+
+/// 新しい連携を 1 つ足せるように、その人の古い連携を消す
+fn drop_oldest_of_user(grants: &mut Grants, user_id: &str) {
+    let mut own: Vec<(String, i64)> = grants
+        .iter()
+        .filter(|(_, (owner, _, _, _))| owner == user_id)
+        .map(|(gid, (_, _, last_used, _))| (gid.clone(), *last_used))
+        .collect();
+    if own.len() < MAX_GRANTS_PER_USER {
+        return;
+    }
+    own.sort_by_key(|(_, last_used)| *last_used);
+    for (gid, _) in &own[..=own.len() - MAX_GRANTS_PER_USER] {
+        grants.remove(gid);
     }
 }
 
@@ -188,6 +312,139 @@ mod tests {
             serde_json::from_slice(&std::fs::read(dir.join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(saved[&gid].2, 5000 + SAVE_EVERY);
         assert_eq!(saved.len(), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn one_user_cannot_pile_up_grants() {
+        let dir = temp_dir("grants-cap");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        let other = store.create("other", IDLE, 0).unwrap();
+        let gids: Vec<String> = (0..MAX_GRANTS_PER_USER as i64 + 1)
+            .map(|now| store.create("1", IDLE, now).unwrap())
+            .collect();
+        assert_eq!(store.len(), MAX_GRANTS_PER_USER + 1);
+        // いちばん古いものだけが消え、他の人の連携は巻き込まない
+        assert!(!store.touch(&gids[0], "1", IDLE, 100));
+        assert!(store.touch(&gids[1], "1", IDLE, 100));
+        assert!(store.touch(gids.last().unwrap(), "1", IDLE, 100));
+        assert!(store.touch(&other, "other", IDLE, 100));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn refresh_rotation_rejects_a_replayed_token_and_revokes_the_grant() {
+        let dir = temp_dir("grants-rotate");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        let gid = store.create_with_refresh_jti("1", IDLE, 0, "gen0").unwrap();
+
+        // 記録どおりの世代は通り、世代が進む
+        let next = match store.rotate_refresh(&gid, "1", Some("gen0"), IDLE, 10) {
+            RefreshRotation::Advanced(next) => next,
+            _ => panic!("the current generation must be accepted"),
+        };
+        assert_ne!(next, "gen0");
+
+        // 正常な連続更新は、最新の世代を出す限り通り続ける
+        let next2 = match store.rotate_refresh(&gid, "1", Some(&next), IDLE, 20) {
+            RefreshRotation::Advanced(next) => next,
+            _ => panic!("the newest generation must be accepted"),
+        };
+        assert_ne!(next2, next);
+
+        // 回転済みのトークンの再提示は再利用として、連携ごと無効になる
+        assert!(matches!(
+            store.rotate_refresh(&gid, "1", Some(&next), IDLE, 30),
+            RefreshRotation::ReuseDetected
+        ));
+        assert_eq!(store.len(), 0);
+        assert!(matches!(
+            store.rotate_refresh(&gid, "1", Some(&next2), IDLE, 40),
+            RefreshRotation::Invalid
+        ));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn refresh_rotation_adopts_legacy_grants_without_locking_anyone_out() {
+        let dir = temp_dir("grants-legacy-rotate");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        // 世代の記録が始まる前の連携とトークン (どちらにも世代が無い)
+        let gid = store.create("1", IDLE, 0).unwrap();
+
+        let next = match store.rotate_refresh(&gid, "1", None, IDLE, 10) {
+            RefreshRotation::Advanced(next) => next,
+            _ => panic!("a legacy token must be adopted"),
+        };
+        // 記録が始まった後は、世代の照合が効く
+        assert!(matches!(
+            store.rotate_refresh(&gid, "1", Some(&next), IDLE, 20),
+            RefreshRotation::Advanced(_)
+        ));
+        // 記録が始まった後に、世代を持たない古いトークンが出てきたら再利用
+        assert!(matches!(
+            store.rotate_refresh(&gid, "1", None, IDLE, 30),
+            RefreshRotation::ReuseDetected
+        ));
+        assert_eq!(store.len(), 0);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn refresh_rotation_refuses_unknown_grants_and_other_users() {
+        let dir = temp_dir("grants-rotate-invalid");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        let gid = store.create_with_refresh_jti("1", IDLE, 0, "gen0").unwrap();
+        assert!(matches!(
+            store.rotate_refresh("nope", "1", Some("gen0"), IDLE, 1),
+            RefreshRotation::Invalid
+        ));
+        assert!(matches!(
+            store.rotate_refresh(&gid, "2", Some("gen0"), IDLE, 1),
+            RefreshRotation::Invalid
+        ));
+        // 失敗した照合では状態は変わらない
+        assert!(matches!(
+            store.rotate_refresh(&gid, "1", Some("gen0"), IDLE, 2),
+            RefreshRotation::Advanced(_)
+        ));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn grants_written_before_generations_still_load() {
+        let dir = temp_dir("grants-legacy-file");
+        let gid = "0123456789abcdef0123456789abcdef";
+        std::fs::write(dir.join(FILE_NAME), format!("{{\"{gid}\":[\"1\",0,0]}}")).unwrap();
+        let store = GrantStore::load(dir.to_str().unwrap());
+        assert!(store.touch(gid, "1", IDLE, 10));
+        // 古い形の連携も、最初の更新で世代の記録に移る
+        assert!(matches!(
+            store.rotate_refresh(gid, "1", None, IDLE, 20),
+            RefreshRotation::Advanced(_)
+        ));
+        // 現在の形で保存し直され、再起動後も連携は生きている
+        let reloaded = GrantStore::load(dir.to_str().unwrap());
+        assert!(reloaded.touch(gid, "1", IDLE, 30));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn the_current_generation_survives_a_restart() {
+        let dir = temp_dir("grants-rotate-restart");
+        let store = GrantStore::load(dir.to_str().unwrap());
+        let gid = store.create_with_refresh_jti("1", IDLE, 0, "gen0").unwrap();
+        let next = match store.rotate_refresh(&gid, "1", Some("gen0"), IDLE, 10) {
+            RefreshRotation::Advanced(next) => next,
+            _ => panic!("the current generation must be accepted"),
+        };
+        let reloaded = GrantStore::load(dir.to_str().unwrap());
+        // 再起動をまたいでも、回転済みのトークンは再利用として検出される
+        assert!(matches!(
+            reloaded.rotate_refresh(&gid, "1", Some("gen0"), IDLE, 20),
+            RefreshRotation::ReuseDetected
+        ));
+        assert_ne!(next, "gen0");
         std::fs::remove_dir_all(dir).unwrap();
     }
 

@@ -54,10 +54,10 @@ fn reply(status: u16, body: &Value) -> Response {
 
 /// `{"token": "..."}` を受け、通るなら `{"active": true, "claims": {...}}`、通らないなら `{"active": false}`
 ///
-/// `claims.roles` は、トークンに入っている値ではなく、**いまの Discord のロール**に差し替える (Bot トークンがあるとき)。
-/// ロールは、トークンを発行した時点のものが入っていて、30〜90 日古くなる。OAuth のアクセストークンにはロールが入らない。
-/// Admin かどうかなど、権限の判断に使う側 (mcp / guard) が、古いロールや空のロールで判断しないようにするため、ここで確かめる。
-/// 確かめられないとき (Discord の障害) は、ロール無しとして返す (権限を、安全な側に倒す)。
+/// `claims.roles` と `claims.can_edit` は、トークンに入っている値ではなく、**いまの Discord のロール**から決める (Bot トークンがあるとき)。
+/// トークンには、発行した時点の値が入っていて、30〜90 日古くなる。OAuth のアクセストークンにはロールが入らない。
+/// 権限の判断に使う側 (api / mcp / guard) が、古い値や空のロールで判断しないようにするため、ここで確かめる。
+/// 確かめられないとき (Discord の障害) と、ギルドを抜けた人は、ロール無し、編集できないとして返す (権限を、安全な側に倒す)。
 /// `roles_source` が、どちらかを示す: `live` / `unavailable` / `token` (Bot トークンが無く、トークンの値のまま)
 async fn introspect(app: &App, body: &[u8]) -> Response {
     let Some(token) = serde_json::from_slice::<Value>(body)
@@ -71,13 +71,22 @@ async fn introspect(app: &App, body: &[u8]) -> Response {
     };
     let user_id = session.id().to_string();
     let mut claims = session.claims;
+    let required_role = app.cfg.discord_required_role_id.as_deref();
     let source = match discord::live_roles(app, &user_id).await {
         LiveRoles::Live(roles) => {
+            let can_edit = discord::roles_allow_edit(required_role, &roles);
             claims.insert("roles".into(), json!(roles));
+            claims.insert("can_edit".into(), json!(can_edit));
+            "live"
+        }
+        LiveRoles::NotMember => {
+            claims.insert("roles".into(), json!([]));
+            claims.insert("can_edit".into(), json!(false));
             "live"
         }
         LiveRoles::Unavailable => {
             claims.insert("roles".into(), json!([]));
+            claims.insert("can_edit".into(), json!(false));
             "unavailable"
         }
         LiveRoles::NotConfigured => "token",

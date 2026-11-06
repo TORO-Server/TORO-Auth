@@ -5,12 +5,13 @@ use axum::response::Response;
 use serde_json::{Value, json};
 use url::form_urlencoded;
 
+use super::grants::RefreshRotation;
 use super::{CODE_TYPE, DEFAULT_SCOPE, REFRESH_TOKEN_TYPE};
 use crate::App;
 use crate::auth::session::ACCESS_TOKEN_TYPE;
 use crate::http::{self, Ctx};
 use crate::jwt::{self, Claims};
-use crate::util::sha256_base64url;
+use crate::util::{random_hex, sha256_base64url};
 
 const ACCESS_TOKEN_LIFETIME: i64 = 30 * 86400;
 const REFRESH_TOKEN_LIFETIME: i64 = 180 * 86400;
@@ -86,9 +87,10 @@ fn server_error(ctx: &Ctx) -> Response {
 }
 
 /// リフレッシュトークン (連携を続けるための) を、新しく署名して返す
-fn sign_refresh(app: &App, refresh: &Claims, gid: &str, now: i64) -> String {
+fn sign_refresh(app: &App, refresh: &Claims, gid: &str, jti: &str, now: i64) -> String {
     let mut claims = refresh.clone();
     claims.insert("gid".into(), json!(gid));
+    claims.insert("jti".into(), json!(jti));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(now + REFRESH_TOKEN_LIFETIME));
     jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret)
@@ -104,10 +106,10 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
         return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
     };
 
-    let scope = claim(&claims, "scope").unwrap_or(DEFAULT_SCOPE).to_string();
+    // scope の無いトークンは、本人が発行したトークンの扱いになる。OAuth のトークンには必ず入れる (無ければ読むだけ)
+    let scope = claim(&claims, "scope").unwrap_or("read").to_string();
     if let Some(expected_client_id) = claim(&claims, "client_id")
-        && let Some(client_id) = param(params, "client_id")
-        && client_id != expected_client_id
+        && param(params, "client_id") != Some(expected_client_id)
     {
         return oauth_error(ctx, "invalid_grant", "client_id mismatch");
     }
@@ -115,18 +117,37 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     let idle = app.cfg.oauth_idle_seconds;
     let user = claim(&claims, "id").unwrap_or("").to_string();
     // 使っている間は続き、使わないまま期間を過ぎた連携は、ここで終わる (もう一度ログインして連携する)
-    let Some(gid) = claim(&claims, "gid")
-        .filter(|gid| app.grants.touch(gid, &user, idle, now))
-        .map(str::to_string)
-    else {
+    let Some(gid) = claim(&claims, "gid").map(str::to_string) else {
         return oauth_error(
             ctx,
             "invalid_grant",
             "The authorization expired because it was not used for a while",
         );
     };
+    // 世代が合わないリフレッシュトークンは再利用とみなし、連携ごと無効にする
+    let next_jti = match app
+        .grants
+        .rotate_refresh(&gid, &user, claim(&claims, "jti"), idle, now)
+    {
+        RefreshRotation::Advanced(next) => next,
+        RefreshRotation::ReuseDetected => {
+            return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
+        }
+        RefreshRotation::SaveFailed => return server_error(ctx),
+        RefreshRotation::Invalid => {
+            return oauth_error(
+                ctx,
+                "invalid_grant",
+                "The authorization expired because it was not used for a while",
+            );
+        }
+    };
     // 使っている間は続くよう、リフレッシュトークンも新しくして、署名の期限を延ばす
-    let new_refresh = sign_refresh(app, &claims, &gid, now);
+    let new_refresh = sign_refresh(app, &claims, &gid, &next_jti, now);
+    if let Some(client_id) = claim(&claims, "client_id").map(str::to_string) {
+        claims.insert("aud".into(), json!(client_id));
+    }
+    claims.insert("scope".into(), json!(scope));
     claims.insert("gid".into(), json!(gid));
     claims.insert("iss".into(), json!(app.cfg.issuer));
     claims.insert("type".into(), json!(ACCESS_TOKEN_TYPE));
@@ -209,13 +230,18 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
         .unwrap_or(false);
     let scope = claim(&payload, "scope").unwrap_or(DEFAULT_SCOPE);
     let now = jwt::now();
-    let gid = match app.grants.create(sub, app.cfg.oauth_idle_seconds, now) {
-        Ok(gid) => gid,
-        Err(e) => {
-            eprintln!("grants: {e}");
-            return server_error(ctx);
-        }
-    };
+    let refresh_jti = random_hex(16);
+    let gid =
+        match app
+            .grants
+            .create_with_refresh_jti(sub, app.cfg.oauth_idle_seconds, now, &refresh_jti)
+        {
+            Ok(gid) => gid,
+            Err(e) => {
+                eprintln!("grants: {e}");
+                return server_error(ctx);
+            }
+        };
 
     let access_token = jwt::sign(
         &json!({
@@ -247,6 +273,8 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
             "can_edit": can_edit,
             "scope": scope,
             "gid": gid,
+            "jti": refresh_jti,
+            "client_id": claim(&payload, "client_id"),
             "type": REFRESH_TOKEN_TYPE,
             "iat": now,
             "exp": now + REFRESH_TOKEN_LIFETIME,

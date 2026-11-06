@@ -162,10 +162,18 @@ pub async fn membership(app: &App, user_id: &str, access_token: &str) -> Members
     }
 }
 
+/// Wiki を編集してよいロールか。`DISCORD_REQUIRED_ROLE_ID` が無ければ、メンバーは全員
+pub fn roles_allow_edit(required_role: Option<&str>, roles: &[String]) -> bool {
+    required_role.is_none_or(|required| roles.iter().any(|role| role == required))
+}
+
 /// 利用者のロールの確認結果
+#[derive(Clone)]
 pub enum LiveRoles {
-    /// Discord で、いま確かめた (ギルドに居なければ空)
+    /// Discord で、いま確かめた (ギルドのメンバー)
     Live(Vec<String>),
+    /// Discord で、いま確かめた (ギルドに居ない)
+    NotMember,
     /// 確かめられなかった (Discord の障害など)
     Unavailable,
     /// Bot トークンが無く、確かめる手段が無い
@@ -173,29 +181,39 @@ pub enum LiveRoles {
 }
 
 const LIVE_ROLES_TTL: Duration = Duration::from_secs(60);
+/// 確かめられなかった結果を覚える長さ。障害中に、確認のたびに Discord を呼ばないため
+const UNAVAILABLE_TTL: Duration = Duration::from_secs(5);
 /// 確認の窓口は内側だけなので、短く待つ (api / mcp / guard を長く待たせない)
 const LIVE_ROLES_TIMEOUT: Duration = Duration::from_secs(3);
 const LIVE_ROLES_MAX: usize = 2048;
 
+fn is_fresh(fetched_at: &Instant, roles: &LiveRoles) -> bool {
+    let ttl = match roles {
+        LiveRoles::Unavailable => UNAVAILABLE_TTL,
+        _ => LIVE_ROLES_TTL,
+    };
+    fetched_at.elapsed() < ttl
+}
+
 /// 利用者のロールを、短い間だけ覚えておく (トークンの確認のたびに Discord を呼ばないため)
 #[derive(Default)]
 pub struct LiveRolesCache {
-    cached: Mutex<HashMap<String, (Instant, Vec<String>)>>,
+    cached: Mutex<HashMap<String, (Instant, LiveRoles)>>,
 }
 
 impl LiveRolesCache {
-    fn fresh(&self, user_id: &str) -> Option<Vec<String>> {
+    fn fresh(&self, user_id: &str) -> Option<LiveRoles> {
         let cached = self.cached.lock().unwrap_or_else(PoisonError::into_inner);
         cached
             .get(user_id)
-            .filter(|(fetched_at, _)| fetched_at.elapsed() < LIVE_ROLES_TTL)
+            .filter(|(fetched_at, roles)| is_fresh(fetched_at, roles))
             .map(|(_, roles)| roles.clone())
     }
 
-    fn store(&self, user_id: &str, roles: Vec<String>) {
+    fn store(&self, user_id: &str, roles: LiveRoles) {
         let mut cached = self.cached.lock().unwrap_or_else(PoisonError::into_inner);
         if cached.len() >= LIVE_ROLES_MAX {
-            cached.retain(|_, (fetched_at, _)| fetched_at.elapsed() < LIVE_ROLES_TTL);
+            cached.retain(|_, (fetched_at, roles)| is_fresh(fetched_at, roles));
             if cached.len() >= LIVE_ROLES_MAX {
                 cached.clear();
             }
@@ -205,14 +223,20 @@ impl LiveRolesCache {
 }
 
 /// 利用者の、いまのロール。トークンに入っているロールは、発行した時点のもので古くなるので、
-/// 権限の判断 (Admin かどうか) には、これを使う。ギルドに居なければ、空のロール
+/// 権限の判断 (Admin かどうか、編集できるか) には、これを使う
 pub async fn live_roles(app: &App, user_id: &str) -> LiveRoles {
     let Some(bot_token) = &app.cfg.discord_bot_token else {
         return LiveRoles::NotConfigured;
     };
     if let Some(roles) = app.live_roles.fresh(user_id) {
-        return LiveRoles::Live(roles);
+        return roles;
     }
+    let roles = fetch_live_roles(app, bot_token, user_id).await;
+    app.live_roles.store(user_id, roles.clone());
+    roles
+}
+
+async fn fetch_live_roles(app: &App, bot_token: &str, user_id: &str) -> LiveRoles {
     let res = app
         .http
         .get(format!(
@@ -226,17 +250,16 @@ pub async fn live_roles(app: &App, user_id: &str) -> LiveRoles {
     let Ok(res) = res else {
         return LiveRoles::Unavailable;
     };
-    let roles = match res.status().as_u16() {
+    match res.status().as_u16() {
         200 => match res.json::<Value>().await {
-            Ok(member) => roles_of(&member),
-            Err(_) => return LiveRoles::Unavailable,
+            Ok(member) => LiveRoles::Live(roles_of(&member)),
+            Err(_) => LiveRoles::Unavailable,
         },
-        404 => Vec::new(), // ギルドを抜けた人
-        _ => return LiveRoles::Unavailable,
-    };
-    app.live_roles.store(user_id, roles.clone());
-    LiveRoles::Live(roles)
+        404 => LiveRoles::NotMember, // ギルドを抜けた人
+        _ => LiveRoles::Unavailable,
+    }
 }
+
 /// ギルドのロールの名前を、少しの間覚えておく
 #[derive(Default)]
 pub struct RoleNames {

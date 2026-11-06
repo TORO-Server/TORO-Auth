@@ -101,6 +101,7 @@ async fn start_fake_discord() -> String {
                     return json_response(401, json!({ "message": "401: Unauthorized" }));
                 }
                 match p.rsplit('/').next().unwrap_or("") {
+                    "6006" => json_response(200, json!({ "roles": [] })),
                     "7007" => json_response(200, json!({ "roles": ["role-live"] })),
                     "8008" => json_response(404, json!({ "message": "Unknown Member" })),
                     "9009" => json_response(500, json!({ "message": "boom" })),
@@ -150,6 +151,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         discord_api: start_fake_discord().await,
         state_dir: state_dir.to_string_lossy().into_owned(),
         oauth_idle_seconds: 30 * 86400,
+        body_read_timeout_secs: 30,
     };
     customize(&mut cfg);
 

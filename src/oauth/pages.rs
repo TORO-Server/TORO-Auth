@@ -1,6 +1,6 @@
 //! OAuth の HTML 画面
 
-use crate::auth::session::{Session, scope_allows_write};
+use crate::auth::session::{Session, scope_allows_admin_tools, scope_allows_write};
 use crate::config::Config;
 use crate::template::{insert_block, render};
 
@@ -17,6 +17,7 @@ pub struct Consent<'a> {
 
 const WRITE_PERMISSION: &str = "<li>+ Wiki の編集と保存 (GitHub へのコミット。メンバーのみ)</li>";
 const NO_WRITE_PERMISSION: &str = "<li>- Wiki の編集は求めていません (読むだけ)</li>";
+const ADMIN_PERMISSION: &str = "<li class=\"warn\">+ Admin 以上のロールの人だけ: 荒らし対策の操作 (ロールバック、ミュート、キックなど) と、Discord ボットの操作</li>";
 
 pub fn consent(cfg: &Config, options: &Consent) -> String {
     let write_requested = scope_allows_write(options.scope);
@@ -67,6 +68,15 @@ pub fn consent(cfg: &Config, options: &Consent) -> String {
             WRITE_PERMISSION
         } else {
             NO_WRITE_PERMISSION
+        },
+    );
+    let page = insert_block(
+        &page,
+        "ADMIN_PERMISSION",
+        if scope_allows_admin_tools(options.scope) {
+            ADMIN_PERMISSION
+        } else {
+            ""
         },
     );
     cfg.fill_links(&insert_block(&page, "USER_SECTION", &section))

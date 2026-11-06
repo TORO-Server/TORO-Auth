@@ -145,6 +145,16 @@ pub fn respond(
 
 pub const JSON_UTF8: &str = "application/json; charset=utf-8";
 pub const HTML_UTF8: &str = "text/html; charset=utf-8";
+/// 画面の既定の CSP。スクリプトを持たない画面は、これで動く
+const CSP_DEFAULT: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'";
+
+fn csp_headers(mut headers: HeaderMap) -> HeaderMap {
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(CSP_DEFAULT),
+    );
+    headers
+}
 
 pub fn json(ctx: &Ctx, data: &Value, status: u16) -> Response {
     respond(status, cors_headers(ctx), JSON_UTF8, data.to_string())
@@ -160,7 +170,7 @@ pub fn pretty_json(mut headers: HeaderMap, data: &Value, status: u16) -> Respons
 pub fn html(body: String, status: u16) -> Response {
     respond(
         status,
-        HeaderMap::new(),
+        csp_headers(HeaderMap::new()),
         HTML_UTF8,
         template::with_asset_version(&body),
     )
@@ -175,7 +185,7 @@ pub fn error(ctx: &Ctx, message: &str, status: u16) -> Response {
         );
         return respond(
             status,
-            cors_headers(ctx),
+            csp_headers(cors_headers(ctx)),
             HTML_UTF8,
             template::with_asset_version(&page),
         );
