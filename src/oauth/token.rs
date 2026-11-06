@@ -107,8 +107,7 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     // scope の無いトークンは、本人が発行したトークンの扱いになる。OAuth のトークンには必ず入れる (無ければ読むだけ)
     let scope = claim(&claims, "scope").unwrap_or("read").to_string();
     if let Some(expected_client_id) = claim(&claims, "client_id")
-        && let Some(client_id) = param(params, "client_id")
-        && client_id != expected_client_id
+        && param(params, "client_id") != Some(expected_client_id)
     {
         return oauth_error(ctx, "invalid_grant", "client_id mismatch");
     }

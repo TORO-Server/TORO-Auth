@@ -193,7 +193,11 @@ async fn full_flow_from_guest_to_refresh() {
     // リフレッシュ
     let res = token_request(
         &server,
-        &[("grant_type", "refresh_token"), ("refresh_token", refresh)],
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh),
+            ("client_id", "toro-ai-1"),
+        ],
     )
     .await;
     assert_eq!(res.status(), 200);
@@ -205,7 +209,8 @@ async fn full_flow_from_guest_to_refresh() {
             &server,
             &[
                 ("grant_type", "refresh_token"),
-                ("refresh_token", renewed_refresh)
+                ("refresh_token", renewed_refresh),
+                ("client_id", "toro-ai-1")
             ]
         )
         .await
@@ -648,7 +653,11 @@ async fn renew_access_token(server: &TestServer, refresh: &str) -> String {
 async fn refresh_with(server: &TestServer, refresh: &str) -> reqwest::Response {
     token_request(
         server,
-        &[("grant_type", "refresh_token"), ("refresh_token", refresh)],
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh),
+            ("client_id", "toro-ai-1"),
+        ],
     )
     .await
 }
@@ -673,21 +682,36 @@ async fn refreshed_tokens_keep_the_scope_and_the_client() {
         "client_id mismatch"
     );
 
-    for extra in [None, Some(("client_id", "toro-ai-1"))] {
-        let mut params = vec![
+    // client_id を付けない更新は、トークンがクライアントに結び付いている限り拒否する
+    let res = token_request(
+        &server,
+        &[
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh.as_str()),
-        ];
-        params.extend(extra);
-        let res = token_request(&server, &params).await;
-        assert_eq!(res.status(), 200);
-        let renewed: Value = res.json().await.unwrap();
-        let access = jwt::verify(renewed["access_token"].as_str().unwrap(), JWT_SECRET).unwrap();
-        assert_eq!(access["scope"], "mcp");
-        assert_eq!(access["aud"], "toro-ai-1");
-        assert_eq!(access["type"], "mcp_access_token");
-        assert_eq!(renewed["scope"], "mcp");
-    }
+        ],
+    )
+    .await;
+    assert_eq!(res.status(), 400);
+    let body: Value = res.json().await.unwrap();
+    assert_eq!(body["error"], "invalid_grant");
+    assert_eq!(body["error_description"], "client_id mismatch");
+
+    let res = token_request(
+        &server,
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh.as_str()),
+            ("client_id", "toro-ai-1"),
+        ],
+    )
+    .await;
+    assert_eq!(res.status(), 200);
+    let renewed: Value = res.json().await.unwrap();
+    let access = jwt::verify(renewed["access_token"].as_str().unwrap(), JWT_SECRET).unwrap();
+    assert_eq!(access["scope"], "mcp");
+    assert_eq!(access["aud"], "toro-ai-1");
+    assert_eq!(access["type"], "mcp_access_token");
+    assert_eq!(renewed["scope"], "mcp");
 }
 
 #[tokio::test]
