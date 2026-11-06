@@ -5,9 +5,12 @@ set -euo pipefail
 
 ENV_FILE="${TORO_AUTH_ENV:-/home/toroserver/toro-auth.env}"
 COMPOSE_DIR="${TORO_COMPOSE_DIR:-/home/toroserver}"
-GUILD_ID="000000000000000000"
 
 [ -f "$ENV_FILE" ] || { echo "$ENV_FILE がありません" >&2; exit 1; }
+
+# ギルド ID は env ファイルから読む (リポジトリに実値を書かない)
+GUILD_ID=$(grep '^DISCORD_GUILD_ID=' "$ENV_FILE" | tail -n 1 | cut -d '=' -f 2-)
+[ -n "$GUILD_ID" ] || { echo "DISCORD_GUILD_ID が $ENV_FILE にありません" >&2; exit 1; }
 
 read -rsp "DISCORD_BOT_TOKEN: " token
 echo
