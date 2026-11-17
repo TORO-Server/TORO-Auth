@@ -2,7 +2,7 @@
 
 TORO Server の共通認証サービスです。Rust で書かれています。
 
-役割は「だれなのかを確かめる」ことだけです。Discord でのログイン、トークンの発行、AI クライアント向けの OAuth 2.0 の認可を受け持ちます。データを読み書きするのは [TORO-API](https://github.com/TORO-Server/TORO-API)、AI クライアントの接続先は [TORO-MCP](https://github.com/TORO-Server/TORO-MCP) です。
+役割は「だれなのかを確かめる」ことだけです。Discord でのログイン、トークン (本人確認済みの印になる文字列) の発行、AI クライアント (AI を使うアプリ) 向けの OAuth 2.0 (パスワードを渡さずにアプリへ利用を許す決まり) の認可を受け持ちます。データを読み書きするのは [TORO-API](https://github.com/TORO-Server/TORO-API)、AI クライアントの接続先は [TORO-MCP](https://github.com/TORO-Server/TORO-MCP) です。
 
 ## 動かしてみる
 
