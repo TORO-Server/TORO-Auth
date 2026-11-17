@@ -29,7 +29,8 @@ async fn main() {
         .await
         .expect("bind internal");
     eprintln!(
-        "toro-auth {} listening on :{port} (internal :{internal_port})",
+        "{} {} listening on :{port} (internal :{internal_port})",
+        env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
 
