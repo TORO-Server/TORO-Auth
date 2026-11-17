@@ -1,6 +1,6 @@
-# toro-auth: auth.torosaba.net (共通認証)
+# auth.torosaba.net (共通認証)
 #
-#   docker build -t toro-auth .
+#   docker build -t auth .
 #
 # musl で静的にリンクして scratch に載せる。CA 証明書はバイナリに埋め込んである (webpki-roots)
 

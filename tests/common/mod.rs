@@ -132,7 +132,7 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
     let internal = format!("http://{}", internal_listener.local_addr().unwrap());
 
     let state_dir =
-        std::env::temp_dir().join(format!("toro-auth-test-{}", toro_auth::util::random_hex(8)));
+        std::env::temp_dir().join(format!("auth-test-{}", toro_auth::util::random_hex(8)));
     std::fs::create_dir_all(&state_dir).unwrap();
 
     let mut cfg = Config {
