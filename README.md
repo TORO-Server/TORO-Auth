@@ -11,7 +11,7 @@ cargo test   # 試験。偽の Discord を自動で立てるので、秘密も�
 cargo run    # 動かす。必須の環境変数は .env.example を見てください
 ```
 
-設定の名前と既定値の正本は [.env.example](.env.example) です。秘密の値 (`JWT_SECRET` と `DISCORD_CLIENT_SECRET`) だけを、リポジトリの外の環境変数に書きます。
+設定の名前と既定値の正本は [.env.example](.env.example) です。秘密の値 (`JWT_SECRET` と `DISCORD_CLIENT_SECRET`) だけを、置き場の外の環境変数に書きます。
 
 ## 関連文書
 
