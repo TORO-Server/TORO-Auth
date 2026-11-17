@@ -1,4 +1,4 @@
-# toro-auth
+# TORO-Auth
 
 TORO Server の共通認証サービスです。Rust で書かれています。
 

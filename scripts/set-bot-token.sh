@@ -1,9 +1,11 @@
 #!/bin/bash
-# Discord の Bot トークンを toro-auth.env に入れて、toro-auth を入れ直す (サーバーの上で動かす)。
+# Discord の Bot トークンを認証サービスの env ファイルに入れて、認証サービスを入れ直す (サーバーの上で動かす)。
+#   必須の環境変数: TORO_AUTH_ENV (env ファイルのパス)、AUTH_SERVICE (compose のサービス名)
 #   入力は画面に出ない。ギルドのロールを読めるトークンだけを保存する。
 set -euo pipefail
 
-ENV_FILE="${TORO_AUTH_ENV:-/home/toroserver/toro-auth.env}"
+ENV_FILE="${TORO_AUTH_ENV:?TORO_AUTH_ENV に env ファイルのパスを指定してください}"
+AUTH_SERVICE="${AUTH_SERVICE:?AUTH_SERVICE に compose の認証サービス名を指定してください}"
 COMPOSE_DIR="${TORO_COMPOSE_DIR:-/home/toroserver}"
 
 [ -f "$ENV_FILE" ] || { echo "$ENV_FILE がありません" >&2; exit 1; }
@@ -33,5 +35,5 @@ chgrp --reference="$ENV_FILE" "$tmp"
 mv "$tmp" "$ENV_FILE"
 
 cd "$COMPOSE_DIR"
-docker compose up -d --no-deps --force-recreate toro-auth
+docker compose up -d --no-deps --force-recreate "$AUTH_SERVICE"
 echo "完了。auth.torosaba.net を開き直すと、ロールの名前が出ます"

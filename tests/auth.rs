@@ -356,7 +356,7 @@ async fn token_is_never_shown_again_after_it_is_issued() {
 
 #[tokio::test]
 async fn failing_to_save_the_record_issues_no_token() {
-    let missing = std::env::temp_dir().join("toro-auth-test-does-not-exist");
+    let missing = std::env::temp_dir().join("auth-test-does-not-exist");
     let server = start_with(|cfg| cfg.state_dir = missing.to_string_lossy().into_owned()).await;
     let cookie = server.login("member").await;
     let res = server
