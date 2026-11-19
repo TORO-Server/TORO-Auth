@@ -1,4 +1,6 @@
-//! JWT (HS256)。署名の鍵は `JWT_SECRET`
+//! JWT (HS256)。署名の鍵は、トークンの種類ごとに別の値 (`Keys`)
+//!
+//! 1 つの鍵が漏れても、他の種類のトークンは偽造できない。種類 A の鍵で署名したトークンは、種類 B の確認では通らない。
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -9,6 +11,99 @@ use serde_json::{Map, Value, json};
 use sha2::Sha256;
 
 pub type Claims = Map<String, Value>;
+
+/// トークンの種類。種類ごとに署名の鍵が違う
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Kind {
+    /// Discord ログインの state
+    LoginState,
+    /// ブラウザのセッションと、API 用の短い期限のトークン (`api_session`)
+    Session,
+    /// 90 日トークン (AI コネクタ用)
+    Connector,
+    /// OAuth の同意 (承認のリンクに入れる)
+    Consent,
+    /// OAuth の認可コード
+    Code,
+    /// OAuth のアクセストークン
+    Access,
+    /// OAuth のリフレッシュトークン
+    Refresh,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 7] = [
+        Kind::LoginState,
+        Kind::Session,
+        Kind::Connector,
+        Kind::Consent,
+        Kind::Code,
+        Kind::Access,
+        Kind::Refresh,
+    ];
+
+    /// 鍵を渡す環境変数の名前
+    pub fn env_name(self) -> &'static str {
+        match self {
+            Kind::LoginState => "JWT_SECRET_STATE",
+            Kind::Session => "JWT_SECRET_SESSION",
+            Kind::Connector => "JWT_SECRET_CONNECTOR",
+            Kind::Consent => "JWT_SECRET_CONSENT",
+            Kind::Code => "JWT_SECRET_CODE",
+            Kind::Access => "JWT_SECRET_ACCESS",
+            Kind::Refresh => "JWT_SECRET_REFRESH",
+        }
+    }
+}
+
+/// 鍵の最小の長さ (バイト)
+pub const MIN_KEY_BYTES: usize = 32;
+
+/// 種類ごとの署名の鍵
+#[derive(Clone)]
+pub struct Keys {
+    values: [String; 7],
+}
+
+impl Keys {
+    /// 7 つの鍵。どれも `MIN_KEY_BYTES` 以上で、互いに違う値でなければならない
+    /// (同じ値を使い回すと、分けた意味が無くなる)
+    pub fn new(values: [String; 7]) -> Result<Self, String> {
+        for (kind, value) in Kind::ALL.iter().zip(&values) {
+            if value.len() < MIN_KEY_BYTES {
+                return Err(format!(
+                    "{} must be at least {MIN_KEY_BYTES} bytes",
+                    kind.env_name()
+                ));
+            }
+        }
+        for (i, a) in values.iter().enumerate() {
+            for (j, b) in values.iter().enumerate().skip(i + 1) {
+                if a == b {
+                    return Err(format!(
+                        "{} and {} must be different values",
+                        Kind::ALL[i].env_name(),
+                        Kind::ALL[j].env_name()
+                    ));
+                }
+            }
+        }
+        Ok(Self { values })
+    }
+
+    pub fn get(&self, kind: Kind) -> &str {
+        &self.values[Kind::ALL
+            .iter()
+            .position(|k| *k == kind)
+            .expect("known kind")]
+    }
+
+    /// テスト用: 1 つの値から、種類ごとに違う鍵を作る
+    pub fn derived_for_tests(base: &str) -> Self {
+        let values = Kind::ALL.map(|kind| format!("{base}-{}", kind.env_name()));
+        Self::new(values).expect("derived keys are distinct")
+    }
+}
 
 const HEADER: &str = r#"{"alg":"HS256","typ":"JWT"}"#;
 
@@ -107,6 +202,42 @@ mod tests {
         let forged = URL_SAFE_NO_PAD.encode(r#"{"can_edit":true}"#);
         parts[1] = &forged;
         assert!(verify(&parts.join("."), SECRET).is_none());
+    }
+
+    #[test]
+    fn a_token_signed_for_one_kind_does_not_verify_as_another() {
+        let keys = Keys::derived_for_tests("base-secret-base-secret-base-secret");
+        for signer in Kind::ALL {
+            let token = sign(&json!({"id": "1", "exp": now() + 60}), keys.get(signer));
+            for verifier in Kind::ALL {
+                assert_eq!(
+                    verify(&token, keys.get(verifier)).is_some(),
+                    signer == verifier,
+                    "signed as {signer:?}, verified as {verifier:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn keys_must_be_long_and_distinct() {
+        let long = |c: char| c.to_string().repeat(MIN_KEY_BYTES);
+        let distinct: [String; 7] = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map(long);
+        assert!(Keys::new(distinct.clone()).is_ok());
+
+        let mut short = distinct.clone();
+        short[3] = "short".into();
+        assert!(
+            Keys::new(short)
+                .err()
+                .unwrap()
+                .contains("JWT_SECRET_CONSENT")
+        );
+
+        let mut repeated = distinct;
+        repeated[5] = repeated[1].clone();
+        let error = Keys::new(repeated).err().unwrap();
+        assert!(error.contains("JWT_SECRET_SESSION") && error.contains("JWT_SECRET_ACCESS"));
     }
 
     #[test]

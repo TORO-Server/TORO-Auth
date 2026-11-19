@@ -8,16 +8,16 @@ use serde_json::json;
 /// 発行した時点のロールが入った、試験用のトークン
 fn token_with_roles(id: &str, roles: serde_json::Value) -> String {
     toro_auth::jwt::sign(
-        &json!({ "id": id, "username": "u", "can_edit": true, "roles": roles, "exp": toro_auth::jwt::now() + 600 }),
-        JWT_SECRET,
+        &json!({ "id": id, "username": "u", "can_edit": true, "roles": roles, "sgen": 0, "exp": toro_auth::jwt::now() + 600 }),
+        &key(toro_auth::jwt::Kind::Session),
     )
 }
 
 /// 発行した時点の `can_edit` が入った、試験用のトークン
 fn token_with_can_edit(id: &str, can_edit: bool) -> String {
     toro_auth::jwt::sign(
-        &json!({ "id": id, "username": "u", "can_edit": can_edit, "roles": ["role-old"], "exp": toro_auth::jwt::now() + 600 }),
-        JWT_SECRET,
+        &json!({ "id": id, "username": "u", "can_edit": can_edit, "roles": ["role-old"], "sgen": 0, "exp": toro_auth::jwt::now() + 600 }),
+        &key(toro_auth::jwt::Kind::Session),
     )
 }
 

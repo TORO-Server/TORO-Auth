@@ -2,7 +2,7 @@
 # 認証サービスの env ファイルの秘密を入力する (サーバーの上で動かす)。
 #   必須の環境変数: TORO_AUTH_ENV (env ファイルのパス)
 #   入力は画面に出ない。空のまま Enter を押すと、今の値を残す。
-#   JWT_SECRET は変えない (変えると全員がログアウトされる)。
+#   JWT_SECRET_* は変えない (変えると、その種類のトークンが全員分使えなくなる)。
 set -euo pipefail
 
 ENV_FILE="${TORO_AUTH_ENV:?TORO_AUTH_ENV に env ファイルのパスを指定してください}"
