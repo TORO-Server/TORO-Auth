@@ -10,7 +10,6 @@
 //! 最後に使った時刻の保存は、書き込みを減らすため `SAVE_EVERY` ごとにまとめる (落ちたときに失うのは、その分の「使った」だけ)。
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
@@ -207,11 +206,7 @@ impl GrantStore {
 
     /// 書きかけのファイルを読まないよう、別名で書いてから置き換える
     fn save(&self, grants: &Grants) -> std::io::Result<()> {
-        let tmp = self.path.with_extension("tmp");
-        let mut file = std::fs::File::create(&tmp)?;
-        file.write_all(&serde_json::to_vec(grants)?)?;
-        file.sync_all()?;
-        std::fs::rename(&tmp, &self.path)
+        crate::util::write_private_atomic(&self.path, &serde_json::to_vec(grants)?)
     }
 
     #[cfg(test)]

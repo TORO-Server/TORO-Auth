@@ -11,6 +11,20 @@ pub fn random_hex(bytes: usize) -> String {
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// 書きかけのファイルを読まないよう、別名で書いてから置き換える。ファイルは所有者だけが読み書きできる (0600)
+pub fn write_private_atomic(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    std::fs::rename(&tmp, path)
+}
+
 pub fn sha256_base64url(input: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(input))
 }

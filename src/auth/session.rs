@@ -17,12 +17,14 @@ use serde_json::{Map, Value};
 
 use crate::App;
 use crate::http::Ctx;
-use crate::jwt::{self, Claims};
+use crate::jwt::{self, Claims, Kind};
 use crate::util::encode_uri_component;
 
 /// OAuth で発行するアクセストークンの type。
 /// ブラウザのセッションと 90 日トークンには type が無い
 pub const ACCESS_TOKEN_TYPE: &str = "mcp_access_token";
+/// API 用の短い期限のトークンの purpose (ブラウザのセッションから `/session-token` で出す)
+pub const API_SESSION_PURPOSE: &str = "api_session";
 /// 90 日トークンの purpose。いまの世代のものだけが通る (`tokens`)
 pub const CONNECTOR_PURPOSE: &str = "ai_connector";
 /// 利用者のアイコンとして信じる置き場所
@@ -107,18 +109,38 @@ pub fn scope_allows_admin_tools(scope: &str) -> bool {
 }
 
 /// 利用者の権限を表すトークンだけを通す。
-/// 同じ鍵で署名した認可コードやリフレッシュトークンを、アクセストークンとして使わせない
+/// 署名の鍵は種類ごとに違う。どの鍵で通ったかで種類が決まり、その種類に合う中身 (type / purpose) だけを受ける。
+/// 認可コードやリフレッシュトークン、同意、ログインの state は、ここでは通らない (それぞれ別の鍵)。
 pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
-    let claims = jwt::verify(token, &app.cfg.jwt_secret)?;
-    if claims.get("purpose").and_then(Value::as_str) == Some(CONNECTOR_PURPOSE)
-        && !is_current_connector_token(app, &claims)
-    {
-        return None;
+    let keys = &app.cfg.jwt_keys;
+    if let Some(claims) = jwt::verify(token, keys.get(Kind::Session)) {
+        // ブラウザのセッション (type も purpose も無い) と、API 用の短いトークン (purpose = api_session)
+        let purpose = claims.get("purpose").and_then(Value::as_str);
+        let plain =
+            !claims.contains_key("type") && matches!(purpose, None | Some(API_SESSION_PURPOSE));
+        return (plain && session_is_current(app, &claims)).then_some(claims);
     }
-    match claims.get("type") {
-        None => Some(claims),
-        Some(kind) if kind == ACCESS_TOKEN_TYPE => grant_is_active(app, &claims).then_some(claims),
-        Some(_) => None,
+    if let Some(claims) = jwt::verify(token, keys.get(Kind::Connector)) {
+        let is_connector = !claims.contains_key("type")
+            && claims.get("purpose").and_then(Value::as_str) == Some(CONNECTOR_PURPOSE);
+        return (is_connector && is_current_connector_token(app, &claims)).then_some(claims);
+    }
+    if let Some(claims) = jwt::verify(token, keys.get(Kind::Access)) {
+        let is_access = claims.get("type").and_then(Value::as_str) == Some(ACCESS_TOKEN_TYPE)
+            && !claims.contains_key("purpose");
+        return (is_access && grant_is_active(app, &claims)).then_some(claims);
+    }
+    None
+}
+
+/// ブラウザのセッションと API 用のトークンは、発行したときの世代 (`sgen`) がいまの世代のときだけ通す。
+/// `/logout` が世代を進めるので、ログアウトしたセッションは (Cookie を残していても) 通らない。世代の無いものは通さない
+fn session_is_current(app: &App, claims: &Claims) -> bool {
+    let id = claims.get("id").and_then(Value::as_str);
+    let generation = claims.get("sgen").and_then(Value::as_u64);
+    match (id, generation) {
+        (Some(id), Some(generation)) => app.sessions.current(id) == generation,
+        _ => false,
     }
 }
 

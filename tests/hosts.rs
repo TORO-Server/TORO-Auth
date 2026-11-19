@@ -5,7 +5,7 @@ mod common;
 use axum::http::header;
 use common::*;
 use serde_json::{Value, json};
-use toro_auth::jwt;
+use toro_auth::jwt::{self, Kind};
 
 #[tokio::test]
 async fn auth_does_not_serve_api_or_mcp() {
@@ -69,7 +69,7 @@ async fn session_tokens_are_short_and_checked_by_introspection() {
     let issued: Value = res.json().await.unwrap();
     assert_eq!(issued["expires_in"], 600);
     let token = issued["token"].as_str().unwrap();
-    let claims = jwt::verify(token, JWT_SECRET).unwrap();
+    let claims = jwt::verify(token, &key(Kind::Session)).unwrap();
     assert!(claims["exp"].as_i64().unwrap() <= jwt::now() + 600);
 
     let claims = server.introspect(token).await.unwrap();

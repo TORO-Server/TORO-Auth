@@ -10,7 +10,7 @@ use super::{CODE_TYPE, DEFAULT_SCOPE, REFRESH_TOKEN_TYPE};
 use crate::App;
 use crate::auth::session::ACCESS_TOKEN_TYPE;
 use crate::http::{self, Ctx};
-use crate::jwt::{self, Claims};
+use crate::jwt::{self, Claims, Kind};
 use crate::util::{random_hex, sha256_base64url};
 
 const ACCESS_TOKEN_LIFETIME: i64 = 30 * 86400;
@@ -93,14 +93,14 @@ fn sign_refresh(app: &App, refresh: &Claims, gid: &str, jti: &str, now: i64) -> 
     claims.insert("jti".into(), json!(jti));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(now + REFRESH_TOKEN_LIFETIME));
-    jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret)
+    jwt::sign(&Value::Object(claims), app.cfg.jwt_keys.get(Kind::Refresh))
 }
 
 fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     let Some(refresh_token) = param(params, "refresh_token") else {
         return oauth_error(ctx, "invalid_request", "Missing refresh_token");
     };
-    let Some(mut claims) = jwt::verify(refresh_token, &app.cfg.jwt_secret)
+    let Some(mut claims) = jwt::verify(refresh_token, app.cfg.jwt_keys.get(Kind::Refresh))
         .filter(|claims| claim(claims, "type") == Some(REFRESH_TOKEN_TYPE))
     else {
         return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
@@ -153,7 +153,7 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     claims.insert("type".into(), json!(ACCESS_TOKEN_TYPE));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(now + ACCESS_TOKEN_LIFETIME));
-    let access_token = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
+    let access_token = jwt::sign(&Value::Object(claims), app.cfg.jwt_keys.get(Kind::Access));
 
     respond(
         ctx,
@@ -190,8 +190,8 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
         return oauth_error(ctx, "invalid_request", "Missing code");
     };
     let invalid_code = || oauth_error(ctx, "invalid_grant", "Code is invalid or expired");
-    let Some(payload) =
-        jwt::verify(code, &app.cfg.jwt_secret).filter(|c| claim(c, "type") == Some(CODE_TYPE))
+    let Some(payload) = jwt::verify(code, app.cfg.jwt_keys.get(Kind::Code))
+        .filter(|c| claim(c, "type") == Some(CODE_TYPE))
     else {
         return invalid_code();
     };
@@ -262,7 +262,7 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
             "iat": now,
             "exp": now + ACCESS_TOKEN_LIFETIME,
         }),
-        &app.cfg.jwt_secret,
+        app.cfg.jwt_keys.get(Kind::Access),
     );
     // Google Account Linking の必須要件なので、refresh_token を必ず返す
     let refresh_token = jwt::sign(
@@ -279,7 +279,7 @@ fn exchange_code(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response 
             "iat": now,
             "exp": now + REFRESH_TOKEN_LIFETIME,
         }),
-        &app.cfg.jwt_secret,
+        app.cfg.jwt_keys.get(Kind::Refresh),
     );
 
     respond(

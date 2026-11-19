@@ -1,5 +1,7 @@
 //! 環境変数からの設定。秘密と Discord の ID は env で必須 (リポジトリに実値を書かない)。それ以外の値の既定は本番の値にしてある
 
+use crate::jwt::{Keys, Kind, MIN_KEY_BYTES};
+
 #[derive(Clone)]
 pub struct Config {
     pub port: u16,
@@ -12,7 +14,11 @@ pub struct Config {
     /// Cookie 付きで API を呼べる Origin (他のサブドメインは信じない)
     pub cors_origins: Vec<String>,
 
-    pub jwt_secret: String,
+    /// トークンの種類ごとの署名の鍵
+    pub jwt_keys: Keys,
+    /// `/introspect` を呼ぶ側 (api / mcp) の共有秘密。設定すると、`X-Toro-Token` が一致しない呼び出しを断る。
+    /// 無いときは、これまでどおり内側のネットワークの到達だけを信じる (呼び出し側へ秘密を渡してから設定する)
+    pub introspect_secret: Option<String>,
 
     pub discord_client_id: String,
     pub discord_client_secret: String,
@@ -56,7 +62,7 @@ impl Config {
                 String::new()
             })
         };
-        let jwt_secret = required("JWT_SECRET");
+        let key_values = Kind::ALL.map(|kind| required(kind.env_name()));
         let discord_client_secret = required("DISCORD_CLIENT_SECRET");
         let discord_client_id = required("DISCORD_CLIENT_ID");
         let discord_guild_id = required("DISCORD_GUILD_ID");
@@ -66,8 +72,15 @@ impl Config {
                 missing.join(", ")
             ));
         }
-        if jwt_secret.len() < 32 {
-            return Err("JWT_SECRET must be at least 32 bytes".into());
+        let jwt_keys = Keys::new(key_values)?;
+        let introspect_secret = optional("INTROSPECT_SECRET");
+        if introspect_secret
+            .as_ref()
+            .is_some_and(|secret| secret.len() < MIN_KEY_BYTES)
+        {
+            return Err(format!(
+                "INTROSPECT_SECRET must be at least {MIN_KEY_BYTES} bytes"
+            ));
         }
 
         let issuer = trimmed("PUBLIC_AUTH_URL", "https://auth.torosaba.net");
@@ -86,7 +99,8 @@ impl Config {
                 .map(|origin| origin.trim().to_string())
                 .filter(|origin| !origin.is_empty())
                 .collect(),
-            jwt_secret,
+            jwt_keys,
+            introspect_secret,
             discord_client_id,
             discord_client_secret,
             discord_guild_id,

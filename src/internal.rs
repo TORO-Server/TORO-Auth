@@ -2,6 +2,7 @@
 //!
 //! 署名の鍵 (`JWT_SECRET`) と 90 日トークンの世代の記録は auth だけが持つ。
 //! api と mcp は、利用者の Bearer トークンをここへ渡して、いま通るものか、持ち主はだれかを尋ねる (RFC 7662 に倣った形)。
+//! `INTROSPECT_SECRET` を設定すると、呼び出し側は `X-Toro-Token` で同じ秘密を示さなければ断られる (401)。
 //! このポートは Cloudflare のトンネルにも、ホストにも公開しない。Docker の内側のネットワークだけで届く。
 //! 渡されたトークンの中身を返すだけなので、トークンを持たない者には何も渡らない。
 
@@ -10,8 +11,8 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::to_bytes;
 use axum::extract::{Request, State};
-use axum::http::Method;
 use axum::http::header::{self, HeaderValue};
+use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 use serde_json::{Value, json};
 
@@ -19,6 +20,9 @@ use crate::App;
 use crate::auth::discord::{self, LiveRoles};
 use crate::auth::session;
 use crate::http;
+
+/// 呼び出し側の共有秘密を入れるヘッダー
+const INTROSPECT_HEADER: &str = "x-toro-token";
 
 /// トークン 1 本とその枠だけが入る大きさ
 const MAX_BODY_BYTES: usize = 16 * 1024;
@@ -31,6 +35,9 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
     let mut res = match (parts.method.clone(), parts.uri.path()) {
         (Method::GET, "/healthz") => reply(200, &json!({ "ok": true })),
+        (Method::POST, "/introspect") if !caller_is_trusted(&app, &parts.headers) => {
+            reply(401, &json!({ "error": "Unauthorized" }))
+        }
         (Method::POST, "/introspect") => match to_bytes(body, MAX_BODY_BYTES).await {
             Ok(body) => introspect(&app, &body).await,
             Err(_) => reply(413, &json!({ "error": "Payload Too Large" })),
@@ -41,6 +48,26 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
     res.headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     res
+}
+
+/// 呼び出し側の共有秘密 (`X-Toro-Token`)。`INTROSPECT_SECRET` を設定したときだけ確かめる (呼び出し側へ渡してから設定する)。
+/// 同じネットワークにいるだけのコンテナ (toro-main など) が、トークンの中身 (ロールなど) を尋ねられないようにする
+fn caller_is_trusted(app: &App, headers: &HeaderMap) -> bool {
+    let Some(expected) = app.cfg.introspect_secret.as_deref() else {
+        return true;
+    };
+    headers
+        .get(INTROSPECT_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|given| constant_time_eq(given.as_bytes(), expected.as_bytes()))
+}
+
+/// 長さと中身の違いが、時間の差に出ない比べ方 (長さの違いは先に分かってよい。秘密の長さは固定の既知の値)
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |diff, (x, y)| diff | (x ^ y)) == 0
 }
 
 fn reply(status: u16, body: &Value) -> Response {

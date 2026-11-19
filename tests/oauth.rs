@@ -5,7 +5,7 @@ mod common;
 use axum::http::header;
 use common::*;
 use serde_json::{Value, json};
-use toro_auth::jwt;
+use toro_auth::jwt::{self, Kind};
 use toro_auth::util::{encode_uri_component, sha256_base64url};
 
 const CLIENT_REDIRECT: &str = "https://claude.ai/api/mcp/auth_callback";
@@ -169,7 +169,7 @@ async fn full_flow_from_guest_to_refresh() {
     let access = tokens["access_token"].as_str().unwrap();
     let refresh = tokens["refresh_token"].as_str().unwrap();
 
-    let claims = jwt::verify(access, JWT_SECRET).unwrap();
+    let claims = jwt::verify(access, &key(Kind::Access)).unwrap();
     assert_eq!(claims["type"], "mcp_access_token");
     assert_eq!(claims["aud"], "toro-ai-1");
     assert_eq!(claims["id"], "1001");
@@ -592,7 +592,7 @@ async fn expired_consent_is_refused() {
     let cookie = server.login("member").await;
     let expired = jwt::sign(
         &json!({ "type": "oauth_consent", "sub": "1001", "request": "x", "exp": jwt::now() - 1 }),
-        JWT_SECRET,
+        &key(Kind::Consent),
     );
     let extra = format!("&consent={}", encode_uri_component(&expired));
     let res = server
@@ -636,9 +636,9 @@ async fn oauth_tokens_lose_edit_rights_with_the_role() {
     .await;
     let (access, refresh) = issue_tokens(&server).await;
     for token in [access, renew_access_token(&server, &refresh).await] {
-        let mut issued_earlier = jwt::verify(&token, JWT_SECRET).unwrap();
+        let mut issued_earlier = jwt::verify(&token, &key(Kind::Access)).unwrap();
         issued_earlier.insert("can_edit".into(), json!(true));
-        let token = jwt::sign(&Value::Object(issued_earlier), JWT_SECRET);
+        let token = jwt::sign(&Value::Object(issued_earlier), &key(Kind::Access));
         let claims = server.introspect(&token).await.unwrap();
         assert_eq!(claims["roles_source"], "live");
         assert_eq!(claims["can_edit"], false);
@@ -707,7 +707,11 @@ async fn refreshed_tokens_keep_the_scope_and_the_client() {
     .await;
     assert_eq!(res.status(), 200);
     let renewed: Value = res.json().await.unwrap();
-    let access = jwt::verify(renewed["access_token"].as_str().unwrap(), JWT_SECRET).unwrap();
+    let access = jwt::verify(
+        renewed["access_token"].as_str().unwrap(),
+        &key(Kind::Access),
+    )
+    .unwrap();
     assert_eq!(access["scope"], "mcp");
     assert_eq!(access["aud"], "toro-ai-1");
     assert_eq!(access["type"], "mcp_access_token");
@@ -771,7 +775,7 @@ async fn login_continues_while_used_and_ends_after_idling() {
 async fn refreshing_keeps_the_grant_alive_without_other_use() {
     let server = start_with(|cfg| cfg.oauth_idle_seconds = 2).await;
     let (access, mut refresh) = issue_tokens(&server).await;
-    let gid = jwt::verify(&access, JWT_SECRET).unwrap()["gid"].clone();
+    let gid = jwt::verify(&access, &key(Kind::Access)).unwrap()["gid"].clone();
     assert!(gid.as_str().is_some_and(|g| g.len() == 32), "{gid}");
     let mut last_access = access;
     // アクセストークンは使わず、リフレッシュだけを続ける (合計 3.3 秒 > 2 秒)
@@ -782,8 +786,14 @@ async fn refreshing_keeps_the_grant_alive_without_other_use() {
         let renewed: Value = res.json().await.unwrap();
         refresh = renewed["refresh_token"].as_str().unwrap().to_string();
         last_access = renewed["access_token"].as_str().unwrap().to_string();
-        assert_eq!(jwt::verify(&last_access, JWT_SECRET).unwrap()["gid"], gid);
-        assert_eq!(jwt::verify(&refresh, JWT_SECRET).unwrap()["gid"], gid);
+        assert_eq!(
+            jwt::verify(&last_access, &key(Kind::Access)).unwrap()["gid"],
+            gid
+        );
+        assert_eq!(
+            jwt::verify(&refresh, &key(Kind::Refresh)).unwrap()["gid"],
+            gid
+        );
     }
     assert!(server.introspect(&last_access).await.is_some());
 }
@@ -798,14 +808,14 @@ async fn tokens_without_a_grant_are_refused() {
             "sub": "1001", "id": "1001", "username": "member_user", "can_edit": true, "roles": [],
             "scope": "mcp", "type": "mcp_access_token", "iat": now, "exp": now + 3600,
         }),
-        JWT_SECRET,
+        &key(Kind::Access),
     );
     let legacy_refresh = jwt::sign(
         &json!({
             "sub": "1001", "id": "1001", "username": "member_user", "can_edit": true,
             "scope": "mcp", "type": "mcp_refresh_token", "iat": now, "exp": now + 3600,
         }),
-        JWT_SECRET,
+        &key(Kind::Refresh),
     );
     assert!(server.introspect(&legacy_access).await.is_none());
     // リフレッシュも通らない (もう一度ログインして連携する)
@@ -869,7 +879,7 @@ async fn a_lost_grant_record_invalidates_the_tokens() {
             "scope": "mcp", "type": "mcp_access_token", "gid": "00000000000000000000000000000000",
             "iat": now, "exp": now + 3600,
         }),
-        JWT_SECRET,
+        &key(Kind::Access),
     );
     assert!(server.introspect(&token).await.is_none());
 }
