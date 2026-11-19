@@ -148,6 +148,8 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         wiki_url: WIKI_ORIGIN.into(),
         cors_origins: vec![WIKI_ORIGIN.into()],
         jwt_keys: Keys::derived_for_tests(JWT_SECRET),
+        legacy_secret: None,
+        legacy_verify_until: None,
         introspect_secret: None,
         discord_client_id: "client".into(),
         discord_client_secret: "secret".into(),

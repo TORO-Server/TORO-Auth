@@ -17,7 +17,8 @@ use serde_json::{Map, Value};
 
 use crate::App;
 use crate::http::Ctx;
-use crate::jwt::{self, Claims, Kind};
+use crate::jwt::{self, Claims, Kind, Reject};
+use crate::reject_log::{self, Reason};
 use crate::util::encode_uri_component;
 
 /// OAuth で発行するアクセストークンの type。
@@ -112,25 +113,168 @@ pub fn scope_allows_admin_tools(scope: &str) -> bool {
 /// 署名の鍵は種類ごとに違う。どの鍵で通ったかで種類が決まり、その種類に合う中身 (type / purpose) だけを受ける。
 /// 認可コードやリフレッシュトークン、同意、ログインの state は、ここでは通らない (それぞれ別の鍵)。
 pub fn decode_access_token(app: &App, token: &str) -> Option<Claims> {
+    check_token(app, token).ok().map(|checked| checked.claims)
+}
+
+/// 通ったトークン。`legacy` は、移行期間の旧鍵で署名を確かめて通したことを示す
+pub struct Checked {
+    pub claims: Claims,
+    pub kind: &'static str,
+    pub legacy: bool,
+}
+
+/// 通らなかった理由 (ログ用。トークンの中身は持たない)
+pub struct Rejection {
+    pub reason: Reason,
+    pub kind: Option<&'static str>,
+    pub exp: Option<i64>,
+}
+
+fn rejection(reason: Reason, kind: Option<&'static str>, exp: Option<i64>) -> Rejection {
+    Rejection { reason, kind, exp }
+}
+
+/// 種類ごとの中身 (type / purpose) と、いまの状態 (世代・連携) を確かめる。通らなければ、その理由
+fn judge(app: &App, kind: &str, claims: &Claims) -> Result<(), Reason> {
+    match kind {
+        "session" => {
+            // ブラウザのセッション (type も purpose も無い) と、API 用の短いトークン (purpose = api_session)
+            let purpose = claims.get("purpose").and_then(Value::as_str);
+            let plain =
+                !claims.contains_key("type") && matches!(purpose, None | Some(API_SESSION_PURPOSE));
+            if !plain {
+                Err(Reason::Other)
+            } else if !session_is_current(app, claims) {
+                Err(Reason::Revoked)
+            } else {
+                Ok(())
+            }
+        }
+        "connector" => {
+            let is_connector = !claims.contains_key("type")
+                && claims.get("purpose").and_then(Value::as_str) == Some(CONNECTOR_PURPOSE);
+            if !is_connector {
+                Err(Reason::Other)
+            } else if !is_current_connector_token(app, claims) {
+                Err(Reason::Revoked)
+            } else {
+                Ok(())
+            }
+        }
+        _ => {
+            let is_access = claims.get("type").and_then(Value::as_str) == Some(ACCESS_TOKEN_TYPE)
+                && !claims.contains_key("purpose");
+            if !is_access {
+                Err(Reason::Other)
+            } else if !grant_is_active(app, claims) {
+                Err(Reason::Revoked)
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+/// 利用者の権限を表すトークンの確認。通るかどうかは `decode_access_token` と同じで、通らなければ理由を返す。
+///
+/// 鍵の移行期間 (`Config::legacy_key`) の間だけ、Connector と Access は旧鍵でも確かめる (発行は新鍵だけ)。
+/// 旧鍵は種類を分けずに署名していたので、旧鍵で通ったものは、中身から種類を決める。
+/// ブラウザのセッションは、旧鍵では確かめない (世代 `sgen` を持たない昔のセッションは、どのみち通らない)
+pub fn check_token(app: &App, token: &str) -> Result<Checked, Rejection> {
     let keys = &app.cfg.jwt_keys;
-    if let Some(claims) = jwt::verify(token, keys.get(Kind::Session)) {
-        // ブラウザのセッション (type も purpose も無い) と、API 用の短いトークン (purpose = api_session)
-        let purpose = claims.get("purpose").and_then(Value::as_str);
-        let plain =
-            !claims.contains_key("type") && matches!(purpose, None | Some(API_SESSION_PURPOSE));
-        return (plain && session_is_current(app, &claims)).then_some(claims);
+    let legacy_key = app.cfg.legacy_key();
+    // 署名は合ったが、種類・状態が通らなかったもの (最優先で説明する) / 期限切れ / 旧鍵で合ったが別の種類のもの
+    let mut rejected: Option<Rejection> = None;
+    let mut expired: Option<Rejection> = None;
+    let mut other_kind: Option<Rejection> = None;
+    let mut bad_signature = false;
+    for (name, kind, may_be_legacy) in [
+        ("session", Kind::Session, false),
+        ("connector", Kind::Connector, true),
+        ("access", Kind::Access, true),
+    ] {
+        let mut candidates = vec![(keys.get(kind), false)];
+        if let (true, Some(legacy)) = (may_be_legacy, legacy_key) {
+            candidates.push((legacy, true));
+        }
+        for (secret, legacy) in candidates {
+            match jwt::check(token, secret) {
+                Ok(claims) => {
+                    let actual = jwt::kind_hint(&claims);
+                    // 旧鍵は種類を分けていなかった: 中身がこの種類のものだけを、この種類として確かめる
+                    if legacy && actual != Some(name) {
+                        other_kind = Some(rejection(Reason::Other, actual, exp_of(&claims)));
+                        continue;
+                    }
+                    match judge(app, name, &claims) {
+                        Ok(()) => {
+                            return Ok(Checked {
+                                claims,
+                                kind: name,
+                                legacy,
+                            });
+                        }
+                        Err(reason) => {
+                            rejected = Some(rejection(reason, Some(name), exp_of(&claims)));
+                        }
+                    }
+                }
+                Err(Reject::Expired(exp)) => {
+                    let kind = if legacy {
+                        jwt::peek(token).0
+                    } else {
+                        Some(name)
+                    };
+                    expired = Some(rejection(Reason::Expired, kind, Some(exp)));
+                }
+                Err(Reject::BadSignature) => bad_signature = true,
+                Err(Reject::Unusable) => {
+                    rejected = Some(rejection(Reason::Other, Some(name), None));
+                }
+                Err(Reject::Malformed) => {}
+            }
+        }
     }
-    if let Some(claims) = jwt::verify(token, keys.get(Kind::Connector)) {
-        let is_connector = !claims.contains_key("type")
-            && claims.get("purpose").and_then(Value::as_str) == Some(CONNECTOR_PURPOSE);
-        return (is_connector && is_current_connector_token(app, &claims)).then_some(claims);
+    if let Some(found) = rejected.or(expired).or(other_kind) {
+        return Err(found);
     }
-    if let Some(claims) = jwt::verify(token, keys.get(Kind::Access)) {
-        let is_access = claims.get("type").and_then(Value::as_str) == Some(ACCESS_TOKEN_TYPE)
-            && !claims.contains_key("purpose");
-        return (is_access && grant_is_active(app, &claims)).then_some(claims);
+    if bad_signature {
+        // どの鍵でも署名が合わない。本文は信じられないが、期限が先なのに合わないなら、鍵が変わった印になる
+        let (kind, exp) = jwt::peek(token);
+        return Err(rejection(Reason::SignatureMismatch, kind, exp));
     }
-    None
+    Err(rejection(Reason::Other, None, None))
+}
+
+fn exp_of(claims: &Claims) -> Option<i64> {
+    claims
+        .get("exp")
+        .and_then(Value::as_f64)
+        .map(|exp| exp as i64)
+}
+
+/// 確認の窓口 (`internal`) とユーザー情報の窓口が使う。通らなかった理由と、旧鍵で通したことを、ログに残す
+pub fn from_token_logged(app: &App, token: &str, request: &str) -> Option<Session> {
+    match check_token(app, token) {
+        Ok(checked) => {
+            if checked.legacy {
+                reject_log::emit(
+                    request,
+                    Reason::LegacyKeyAccepted,
+                    Some(checked.kind),
+                    exp_of(&checked.claims),
+                );
+            }
+            checked.claims.get("id").and_then(Value::as_str)?;
+            Some(Session {
+                claims: checked.claims,
+            })
+        }
+        Err(rejected) => {
+            reject_log::emit(request, rejected.reason, rejected.kind, rejected.exp);
+            None
+        }
+    }
 }
 
 /// ブラウザのセッションと API 用のトークンは、発行したときの世代 (`sgen`) がいまの世代のときだけ通す。

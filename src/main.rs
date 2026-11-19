@@ -19,6 +19,8 @@ async fn main() {
         }
     };
     let (port, internal_port) = (cfg.port, cfg.internal_port);
+    // 鍵の移行期間の設定は、期限だけを記録する (鍵の値は出さない)
+    let legacy_until = cfg.legacy_key().and(cfg.legacy_verify_until);
     let app = Arc::new(App::new(cfg).expect("HTTP client"));
 
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
@@ -33,6 +35,13 @@ async fn main() {
         env!("CARGO_PKG_NAME"),
         env!("CARGO_PKG_VERSION")
     );
+
+    if let Some(until) = legacy_until {
+        eprintln!(
+            "previous-key verification enabled until {} (issuing uses the new keys only)",
+            toro_auth::auth::account::iso8601(until)
+        );
+    }
 
     let server = axum::serve(listener, toro_auth::routes::router(app.clone()))
         .with_graceful_shutdown(shutdown_signal());
