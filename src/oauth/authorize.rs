@@ -13,7 +13,7 @@ use super::{CODE_TYPE, DEFAULT_SCOPE, client, pages};
 use crate::App;
 use crate::auth::session::{self, Session};
 use crate::http::{self, Ctx};
-use crate::jwt;
+use crate::jwt::{self, Kind};
 use crate::util::{encode_uri_component, random_hex, sha256_base64url};
 
 const CSP_WITH_APPROVE: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -95,7 +95,7 @@ fn consent_is_valid(app: &App, ctx: &Ctx, session: &Session) -> bool {
     }
     let Some(claims) = ctx
         .q("consent")
-        .and_then(|token| jwt::verify(token, &app.cfg.jwt_secret))
+        .and_then(|token| jwt::verify(token, app.cfg.jwt_keys.get(Kind::Consent)))
     else {
         return false;
     };
@@ -142,7 +142,7 @@ fn issue_code(
     claims.insert("jti".into(), json!(random_hex(16)));
     claims.insert("exp".into(), json!(jwt::now() + CODE_LIFETIME));
 
-    let code = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
+    let code = jwt::sign(&Value::Object(claims), app.cfg.jwt_keys.get(Kind::Code));
     let Ok(mut target) = Url::parse(redirect_uri) else {
         return http::html(
             pages::invalid_request(&app.cfg, "Invalid redirect_uri"),
@@ -243,7 +243,7 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
                 "jti": random_hex(16),
                 "exp": jwt::now() + CONSENT_LIFETIME,
             }),
-            &app.cfg.jwt_secret,
+            app.cfg.jwt_keys.get(Kind::Consent),
         );
         format!(
             "/oauth/authorize?{base}&consent={}",

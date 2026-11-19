@@ -5,12 +5,11 @@
 //! 世代は乱数なので、記録を失っても昔のトークンが生き返ることはない。
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 
 use crate::jwt;
-use crate::util::random_hex;
+use crate::util::{random_hex, write_private_atomic};
 
 const FILE_NAME: &str = "connector-tokens.json";
 
@@ -76,11 +75,7 @@ impl TokenStore {
 
     /// 書きかけのファイルを読まないよう、別名で書いてから置き換える
     fn save(&self, records: &Records) -> std::io::Result<()> {
-        let tmp = self.path.with_extension("tmp");
-        let mut file = std::fs::File::create(&tmp)?;
-        file.write_all(&serde_json::to_vec(records)?)?;
-        file.sync_all()?;
-        std::fs::rename(&tmp, &self.path)
+        write_private_atomic(&self.path, &serde_json::to_vec(records)?)
     }
 }
 

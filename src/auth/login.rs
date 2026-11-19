@@ -8,7 +8,7 @@ use url::Url;
 use super::{discord, session};
 use crate::App;
 use crate::http::{self, Ctx};
-use crate::jwt;
+use crate::jwt::{self, Kind};
 use crate::template::render;
 use crate::util::{encode_uri_component, is_loopback_host, is_toro_host, random_hex};
 
@@ -46,7 +46,7 @@ pub fn start(app: &App, ctx: &Ctx) -> Response {
     let nonce = random_hex(16);
     let state = jwt::sign(
         &json!({ "type": STATE_TYPE, "redirect": target, "nonce": nonce, "exp": jwt::now() + STATE_LIFETIME }),
-        &cfg.jwt_secret,
+        cfg.jwt_keys.get(Kind::LoginState),
     );
     let location = format!(
         "{DISCORD_AUTHORIZE}?client_id={}&response_type=code&redirect_uri={}&scope={}&state={}",
@@ -62,7 +62,7 @@ pub fn start(app: &App, ctx: &Ctx) -> Response {
 
 /// state を確かめて、戻り先を返す
 fn verify_state(app: &App, ctx: &Ctx) -> Option<String> {
-    let claims = jwt::verify(ctx.q("state")?, &app.cfg.jwt_secret)?;
+    let claims = jwt::verify(ctx.q("state")?, app.cfg.jwt_keys.get(Kind::LoginState))?;
     if claims.get("type").and_then(Value::as_str) != Some(STATE_TYPE) {
         return None;
     }
@@ -131,10 +131,11 @@ pub async fn callback(app: &App, ctx: &Ctx) -> Result<Response, String> {
             "avatar_url": user.avatar_url(),
             "can_edit": can_edit,
             "roles": membership.roles,
+            "sgen": app.sessions.current(&user.id),
             "iat": now,
             "exp": now + SESSION_LIFETIME,
         }),
-        &app.cfg.jwt_secret,
+        app.cfg.jwt_keys.get(Kind::Session),
     );
 
     let mut res = http::redirect(&return_to);

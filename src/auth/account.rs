@@ -2,12 +2,12 @@
 
 use axum::http::Method;
 use axum::response::Response;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::session;
 use crate::App;
 use crate::http::{self, Ctx};
-use crate::jwt;
+use crate::jwt::{self, Kind};
 
 const CONNECTOR_TOKEN_LIFETIME: i64 = 90 * 86400;
 const SESSION_TOKEN_LIFETIME: i64 = 600;
@@ -20,7 +20,19 @@ pub fn me(app: &App, ctx: &Ctx) -> Response {
     http::json(ctx, &body, 200)
 }
 
-pub fn logout(ctx: &Ctx) -> Response {
+/// ログアウト。Cookie を消し、そのアカウントのセッションの世代を進める (他の端末のセッションも、盗まれたセッションも通らなくなる)。
+/// 90 日トークンと OAuth の連携は、別の仕組みで失効させるので、ここでは変わらない
+pub fn logout(app: &App, ctx: &Ctx) -> Response {
+    let revoked = match session::from_cookie(app, ctx) {
+        Some(session) => app.sessions.advance(session.id()).map(|_| ()),
+        None => Ok(()),
+    };
+    if let Err(e) = revoked {
+        eprintln!("session generations: {e}");
+        let mut res = http::error(ctx, "Could not revoke the session", 500);
+        http::append_cookies(&mut res, &session::logout_cookies());
+        return res;
+    }
     let mut res = if ctx.accepts_html() {
         http::html(
             include_str!("../../assets/auth/logout.html").to_string(),
@@ -45,19 +57,24 @@ pub fn issue_session_token(app: &App, ctx: &Ctx) -> Response {
     let Some(session) = session::from_cookie_for_write(app, ctx) else {
         return http::error(ctx, "Authentication required", 401);
     };
-    let now = jwt::now();
-    let mut claims = session.claims;
-    claims.insert("purpose".into(), json!("api_session"));
-    claims.insert("iat".into(), json!(now));
-    claims.insert("exp".into(), json!(now + SESSION_TOKEN_LIFETIME));
+    let claims = api_session_claims(session.claims, jwt::now());
     http::json(
         ctx,
         &json!({
-            "token": jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret),
+            "token": jwt::sign(&Value::Object(claims), app.cfg.jwt_keys.get(Kind::Session)),
             "expires_in": SESSION_TOKEN_LIFETIME,
         }),
         200,
     )
+}
+
+/// API 用の短いトークンの中身。ブラウザのセッションの中身 (世代 `sgen` を含む) に、purpose と期限を足す。
+/// 世代を引き継ぐので、ログアウトすると、このトークンも通らなくなる
+fn api_session_claims(mut claims: Map<String, Value>, now: i64) -> Map<String, Value> {
+    claims.insert("purpose".into(), json!(session::API_SESSION_PURPOSE));
+    claims.insert("iat".into(), json!(now));
+    claims.insert("exp".into(), json!(now + SESSION_TOKEN_LIFETIME));
+    claims
 }
 
 /// 90 日トークンの発行と再作成。本人のブラウザの、auth の画面からだけ (トークンでトークンを出すと、漏れたものが永久に更新できてしまう)。
@@ -84,7 +101,10 @@ pub fn issue_token(app: &App, ctx: &Ctx) -> Response {
     claims.insert("generation".into(), json!(generation));
     claims.insert("iat".into(), json!(now));
     claims.insert("exp".into(), json!(exp));
-    let token = jwt::sign(&Value::Object(claims), &app.cfg.jwt_secret);
+    let token = jwt::sign(
+        &Value::Object(claims),
+        app.cfg.jwt_keys.get(Kind::Connector),
+    );
 
     http::json(
         ctx,
@@ -117,7 +137,19 @@ pub fn iso8601(unix: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::iso8601;
+    use super::*;
+
+    #[test]
+    fn api_session_tokens_are_short_and_keep_the_session_generation() {
+        let session = json!({ "id": "1", "username": "u", "sgen": 3, "exp": 999_999_999_999_i64 });
+        let claims = api_session_claims(session.as_object().unwrap().clone(), 1000);
+        assert_eq!(claims["purpose"], "api_session");
+        assert_eq!(claims["iat"], 1000);
+        assert_eq!(claims["exp"], 1000 + SESSION_TOKEN_LIFETIME);
+        // 世代を引き継ぐので、ログアウト (世代を進める) で通らなくなる
+        assert_eq!(claims["sgen"], 3);
+        assert_eq!(claims["id"], "1");
+    }
 
     #[test]
     fn formats_dates_like_to_iso_string() {

@@ -38,6 +38,30 @@ pub fn is_valid_redirect_uri(uri: &str) -> bool {
     }
 }
 
+/// 登録された `redirect_uri` と、認可の要求の値が合うか (OAuth 2.1 / RFC 9700 の厳密な一致)。
+/// 完全に同じ文字列だけを通す。例外は RFC 8252 §7.3 のループバック: `http` の `127.0.0.1` / `[::1]` は、
+/// ポートだけが違ってよい (ネイティブアプリが空いているポートを選ぶため)。`localhost` は名前の解決に頼るので例外にしない。
+/// 登録の保存 (`/oauth/register` の内容の保持) を入れるときに、認可と引き換えの両方でこの関数を通す
+pub fn redirect_uri_matches(registered: &str, requested: &str) -> bool {
+    if registered == requested {
+        return true;
+    }
+    let (Ok(registered), Ok(requested)) = (Url::parse(registered), Url::parse(requested)) else {
+        return false;
+    };
+    let is_ip_loopback =
+        |url: &Url| url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "[::1]"));
+    if !is_ip_loopback(&registered) || !is_ip_loopback(&requested) {
+        return false;
+    }
+    let mut a = registered;
+    let mut b = requested;
+    // ポートを除いた残り (スキーム、ホスト、パス、クエリ) が同じなら合う
+    a.set_port(None).ok();
+    b.set_port(None).ok();
+    a == b
+}
+
 /// 利用者に見せる戻り先
 pub fn redirect_target_label(uri: &str) -> String {
     match Url::parse(uri) {
@@ -148,6 +172,51 @@ mod tests {
             "not a url",
         ] {
             assert!(!is_valid_redirect_uri(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn redirect_uris_match_exactly_with_the_loopback_port_exception() {
+        for (registered, requested) in [
+            (
+                "https://claude.ai/api/mcp/auth_callback",
+                "https://claude.ai/api/mcp/auth_callback",
+            ),
+            ("http://127.0.0.1:33418/cb", "http://127.0.0.1:50000/cb"),
+            ("http://[::1]:1/cb", "http://[::1]:2/cb"),
+            ("http://127.0.0.1/cb", "http://127.0.0.1:8080/cb"),
+            (
+                "cursor://anysphere.cursor-retrieval/oauth/callback",
+                "cursor://anysphere.cursor-retrieval/oauth/callback",
+            ),
+        ] {
+            assert!(
+                redirect_uri_matches(registered, requested),
+                "{registered} {requested}"
+            );
+        }
+        for (registered, requested) in [
+            (
+                "https://claude.ai/api/mcp/auth_callback",
+                "https://claude.ai/api/mcp/auth_callback/",
+            ),
+            ("https://claude.ai/cb", "https://claude.ai/cb?x=1"),
+            ("https://claude.ai/cb", "https://evil.example/cb"),
+            ("https://claude.ai/cb", "https://claude.ai:8443/cb"),
+            ("https://claude.ai/cb", "http://claude.ai/cb"),
+            // ループバックでもパスは変えられない。localhost と、127.0.0.1 の取り違えも通さない
+            ("http://127.0.0.1:1/cb", "http://127.0.0.1:2/other"),
+            ("http://localhost:1/cb", "http://localhost:2/cb"),
+            ("http://127.0.0.1:1/cb", "http://localhost:1/cb"),
+            ("http://127.0.0.1:1/cb", "http://[::1]:1/cb"),
+            // ループバックの例外は http だけ
+            ("https://127.0.0.1:1/cb", "https://127.0.0.1:2/cb"),
+            ("not a url", "also not"),
+        ] {
+            assert!(
+                !redirect_uri_matches(registered, requested),
+                "{registered} {requested}"
+            );
         }
     }
 
