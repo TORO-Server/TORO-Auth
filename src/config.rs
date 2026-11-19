@@ -16,6 +16,11 @@ pub struct Config {
 
     /// トークンの種類ごとの署名の鍵
     pub jwt_keys: Keys,
+    /// 鍵の移行期間の旧鍵 (3.0.1 までの `JWT_SECRET`)。検証だけに使い、発行には使わない。
+    /// `JWT_LEGACY_VERIFY_UNTIL` (UNIX 秒) を設定したときだけ読む。種類は Connector / Access / Refresh だけ
+    pub legacy_secret: Option<String>,
+    /// 旧鍵での検証を受け付ける期限 (UNIX 秒)。起動時から `MAX_LEGACY_WINDOW_SECS` 以内でなければ起動しない
+    pub legacy_verify_until: Option<i64>,
     /// `/introspect` を呼ぶ側 (api / mcp) の共有秘密。設定すると、`X-Toro-Token` が一致しない呼び出しを断る。
     /// 無いときは、これまでどおり内側のネットワークの到達だけを信じる (呼び出し側へ秘密を渡してから設定する)
     pub introspect_secret: Option<String>,
@@ -48,10 +53,49 @@ fn trimmed(name: &str, default: &str) -> String {
     or_default(name, default).trim_end_matches('/').to_string()
 }
 
+/// 旧鍵での検証を受け付けてよい最長の期間 (秒)。これより先の期限は設定できない
+pub const MAX_LEGACY_WINDOW_SECS: i64 = 90 * 86400;
+
+/// 移行期間の設定。`JWT_LEGACY_VERIFY_UNTIL` が無ければ旧鍵は読まない (`JWT_SECRET` が env に残っていても無視する)。
+/// 値の中身はエラーにも出さない
+fn legacy_from_env(new_keys: &[String; 7]) -> Result<(Option<String>, Option<i64>), String> {
+    let Some(until) = optional("JWT_LEGACY_VERIFY_UNTIL") else {
+        return Ok((None, None));
+    };
+    let until: i64 = until
+        .parse()
+        .map_err(|_| "JWT_LEGACY_VERIFY_UNTIL must be a UNIX time in seconds".to_string())?;
+    let now = crate::jwt::now();
+    if until <= now || until > now + MAX_LEGACY_WINDOW_SECS {
+        return Err(format!(
+            "JWT_LEGACY_VERIFY_UNTIL must be in the future and within {} days",
+            MAX_LEGACY_WINDOW_SECS / 86400
+        ));
+    }
+    let Some(secret) = optional("JWT_SECRET") else {
+        return Err("JWT_LEGACY_VERIFY_UNTIL needs JWT_SECRET (the previous key)".to_string());
+    };
+    if secret.len() < MIN_KEY_BYTES {
+        return Err(format!("JWT_SECRET must be at least {MIN_KEY_BYTES} bytes"));
+    }
+    if new_keys.contains(&secret) {
+        return Err("JWT_SECRET (previous key) must differ from the new keys".to_string());
+    }
+    Ok((Some(secret), Some(until)))
+}
+
 impl Config {
     /// Cookie 付きのリクエストを受けてよい送り元か (自分自身と、指定の Origin)
     pub fn is_trusted_origin(&self, origin: &str) -> bool {
         origin == self.issuer || self.cors_origins.iter().any(|o| o == origin)
+    }
+
+    /// 移行期間の旧鍵。期限を過ぎたら None (旧鍵で署名されたトークンは、そこから通らなくなる)
+    pub fn legacy_key(&self) -> Option<&str> {
+        match (&self.legacy_secret, self.legacy_verify_until) {
+            (Some(secret), Some(until)) if crate::jwt::now() <= until => Some(secret),
+            _ => None,
+        }
     }
 
     pub fn from_env() -> Result<Self, String> {
@@ -72,6 +116,7 @@ impl Config {
                 missing.join(", ")
             ));
         }
+        let (legacy_secret, legacy_verify_until) = legacy_from_env(&key_values)?;
         let jwt_keys = Keys::new(key_values)?;
         let introspect_secret = optional("INTROSPECT_SECRET");
         if introspect_secret
@@ -100,6 +145,8 @@ impl Config {
                 .filter(|origin| !origin.is_empty())
                 .collect(),
             jwt_keys,
+            legacy_secret,
+            legacy_verify_until,
             introspect_secret,
             discord_client_id,
             discord_client_secret,
