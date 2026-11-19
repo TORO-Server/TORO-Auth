@@ -11,9 +11,15 @@ use axum::response::{IntoResponse, Response};
 use serde_json::{Value, json};
 use toro_auth::App;
 use toro_auth::config::Config;
+use toro_auth::jwt::{Keys, Kind};
 
 pub const GUILD: &str = "000000000000000000";
 pub const JWT_SECRET: &str = "test-secret-test-secret-test-secret";
+/// 種類ごとの署名の鍵 (試験用)
+pub fn key(kind: Kind) -> String {
+    Keys::derived_for_tests(JWT_SECRET).get(kind).to_string()
+}
+
 pub const WIKI_ORIGIN: &str = "https://wiki.torosaba.net";
 
 async fn spawn(router: Router) -> String {
@@ -141,7 +147,8 @@ pub async fn start_with(customize: impl FnOnce(&mut Config)) -> TestServer {
         issuer: base.clone(),
         wiki_url: WIKI_ORIGIN.into(),
         cors_origins: vec![WIKI_ORIGIN.into()],
-        jwt_secret: JWT_SECRET.into(),
+        jwt_keys: Keys::derived_for_tests(JWT_SECRET),
+        introspect_secret: None,
         discord_client_id: "client".into(),
         discord_client_secret: "secret".into(),
         discord_redirect_uri: format!("{base}/callback"),

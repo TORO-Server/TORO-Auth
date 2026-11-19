@@ -5,7 +5,7 @@ mod common;
 use axum::http::header;
 use common::*;
 use serde_json::{Value, json};
-use toro_auth::jwt;
+use toro_auth::jwt::{self, Kind};
 use toro_auth::util::{encode_uri_component, sha256_base64url};
 
 const SUBDOMAIN: &str = "https://assets.torosaba.net";
@@ -20,8 +20,12 @@ fn authorize_path(redirect_uri: &str, client_id: &str) -> String {
     )
 }
 
-fn token_for(claims: Value) -> String {
-    jwt::sign(&claims, JWT_SECRET)
+/// ブラウザのセッションと同じ鍵で署名する (世代 `sgen` が無ければ 0 を入れる)
+fn token_for(mut claims: Value) -> String {
+    if let Some(object) = claims.as_object_mut() {
+        object.entry("sgen").or_insert(json!(0));
+    }
+    jwt::sign(&claims, &key(Kind::Session))
 }
 
 async fn post_token(

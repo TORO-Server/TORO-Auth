@@ -43,6 +43,8 @@ pub struct App {
     pub used_codes: Mutex<HashMap<String, i64>>,
     pub requests: Semaphore,
     pub tokens: auth::tokens::TokenStore,
+    /// ブラウザのセッションの世代 (ログアウトで進めて、前のセッションを失効させる)
+    pub sessions: auth::generations::SessionGenerations,
     /// OAuth の連携の、最後に使った時刻 (使わないまま期間が過ぎると無効にする)
     pub grants: oauth::grants::GrantStore,
     pub role_names: auth::discord::RoleNames,
@@ -58,10 +60,12 @@ impl App {
             .user_agent("TORO-Auth-Gateway")
             .build()?;
         let tokens = auth::tokens::TokenStore::load(&cfg.state_dir);
+        let sessions = auth::generations::SessionGenerations::load(&cfg.state_dir);
         let grants = oauth::grants::GrantStore::load(&cfg.state_dir);
         Ok(Self {
             cfg,
             tokens,
+            sessions,
             grants,
             role_names: Default::default(),
             live_roles: Default::default(),

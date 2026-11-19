@@ -5,7 +5,7 @@ mod common;
 use axum::http::header;
 use common::*;
 use serde_json::{Value, json};
-use toro_auth::jwt;
+use toro_auth::jwt::{self, Kind};
 use toro_auth::util::encode_uri_component;
 
 #[tokio::test]
@@ -230,7 +230,7 @@ async fn api_token_requires_post_and_session() {
     assert_eq!(body.as_object().unwrap().len(), 3);
 
     let token = body["token"].as_str().unwrap();
-    let claims = jwt::verify(token, JWT_SECRET).unwrap();
+    let claims = jwt::verify(token, &key(Kind::Connector)).unwrap();
     assert_eq!(claims["purpose"], "ai_connector");
     assert!(claims["exp"].as_i64().unwrap() > jwt::now() + 89 * 86400);
 
@@ -301,7 +301,7 @@ async fn connector_tokens_without_a_generation_are_rejected() {
             "id": "1001", "username": "member_user", "can_edit": true,
             "purpose": "ai_connector", "exp": jwt::now() + 3600,
         }),
-        JWT_SECRET,
+        &key(Kind::Connector),
     );
     assert!(!is_accepted(&server, &old).await);
 
@@ -313,7 +313,7 @@ async fn connector_tokens_without_a_generation_are_rejected() {
             "id": "1001", "username": "member_user", "can_edit": true, "generation": "guess",
             "purpose": "ai_connector", "exp": jwt::now() + 3600,
         }),
-        JWT_SECRET,
+        &key(Kind::Connector),
     );
     assert!(!is_accepted(&server, &forged_generation).await);
 }

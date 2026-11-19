@@ -96,7 +96,7 @@ async fn route_auth(app: &App, ctx: &Ctx) -> Result<Response, String> {
         "/login" => Ok(auth::login::start(app, ctx)),
         "/callback" => auth::login::callback(app, ctx).await,
         "/session" => Ok(auth::account::me(app, ctx)),
-        "/logout" => Ok(auth::account::logout(ctx)),
+        "/logout" => Ok(auth::account::logout(app, ctx)),
         "/token" => Ok(auth::account::issue_token(app, ctx)),
         "/session-token" => Ok(auth::account::issue_session_token(app, ctx)),
 
