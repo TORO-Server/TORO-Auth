@@ -134,31 +134,99 @@ pub fn sign(claims: &Value, secret: &str) -> String {
 
 /// 署名と有効期限を確かめ、中身を返す。発行するトークンには必ず期限を入れるので、期限の無いものは通さない
 pub fn verify(token: &str, secret: &str) -> Option<Claims> {
+    check(token, secret).ok()
+}
+
+/// 確かめて通らなかった理由 (ログの区分に使う。トークンの中身は持たない)
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reject {
+    /// 3 つの部分に分かれない、または読めない
+    Malformed,
+    /// この鍵での署名と合わない
+    BadSignature,
+    /// 署名は合うが、ヘッダーが想定と違う、または期限 (数値の exp) が無い
+    Unusable,
+    /// 署名は合うが、期限 (exp、UNIX 秒) を過ぎている
+    Expired(i64),
+}
+
+/// `verify` と同じ確かめ方で、通らなかった理由も返す
+pub fn check(token: &str, secret: &str) -> Result<Claims, Reject> {
     let mut parts = token.split('.');
-    let (header, payload, signature) = (parts.next()?, parts.next()?, parts.next()?);
+    let (Some(header), Some(payload), Some(signature)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return Err(Reject::Malformed);
+    };
     if parts.next().is_some() {
-        return None;
+        return Err(Reject::Malformed);
     }
+    let signature = URL_SAFE_NO_PAD
+        .decode(signature)
+        .map_err(|_| Reject::Malformed)?;
 
     let mut mac = mac(secret);
     mac.update(header.as_bytes());
     mac.update(b".");
     mac.update(payload.as_bytes());
-    mac.verify_slice(&URL_SAFE_NO_PAD.decode(signature).ok()?)
-        .ok()?;
+    mac.verify_slice(&signature)
+        .map_err(|_| Reject::BadSignature)?;
 
-    let header: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(header).ok()?).ok()?;
+    let header: Value = URL_SAFE_NO_PAD
+        .decode(header)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or(Reject::Unusable)?;
     if header != json!({"alg": "HS256", "typ": "JWT"}) {
-        return None;
+        return Err(Reject::Unusable);
     }
 
-    let claims: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload).ok()?).ok()?;
-    let claims = claims.as_object()?.clone();
-    let exp = claims.get("exp").and_then(Value::as_f64)?;
+    let claims: Value = URL_SAFE_NO_PAD
+        .decode(payload)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .ok_or(Reject::Unusable)?;
+    let claims = claims.as_object().ok_or(Reject::Unusable)?.clone();
+    let exp = claims
+        .get("exp")
+        .and_then(Value::as_f64)
+        .ok_or(Reject::Unusable)?;
     if (now() as f64) > exp {
-        return None;
+        return Err(Reject::Expired(exp as i64));
     }
-    Some(claims)
+    Ok(claims)
+}
+
+/// 署名を確かめずに、本文から期限 (exp) と種類の見当だけを読む。
+/// 署名が合わなかったトークンの、ログ用の手がかり (偽造されうる値なので、判断には使わない)
+pub fn peek(token: &str) -> (Option<&'static str>, Option<i64>) {
+    let claims: Option<Value> = token
+        .split('.')
+        .nth(1)
+        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let Some(claims) = claims.as_ref().and_then(Value::as_object) else {
+        return (None, None);
+    };
+    let exp = claims
+        .get("exp")
+        .and_then(Value::as_f64)
+        .map(|exp| exp as i64);
+    (kind_hint(claims), exp)
+}
+
+/// 本文の type / purpose / sgen から見た、トークンの種類 (access / refresh / connector / session)。分からなければ None
+pub fn kind_hint(claims: &Claims) -> Option<&'static str> {
+    match (
+        claims.get("type").and_then(Value::as_str),
+        claims.get("purpose").and_then(Value::as_str),
+    ) {
+        (Some("mcp_access_token"), _) => Some("access"),
+        (Some("mcp_refresh_token"), _) => Some("refresh"),
+        (Some(_), _) => None,
+        (None, Some("ai_connector")) => Some("connector"),
+        (None, _) if claims.contains_key("sgen") => Some("session"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

@@ -13,7 +13,7 @@ pub fn handle(app: &App, ctx: &Ctx) -> Response {
         let body = json!({ "error": "unauthorized", "error_description": "Bearer token required" });
         return http::respond(401, headers, http::JSON_UTF8, body.to_string());
     };
-    let claims = session::decode_access_token(app, token);
+    let claims = session::from_token_logged(app, token, "userinfo").map(|session| session.claims);
     let Some((claims, sub)) = claims.and_then(|c| {
         c.get("sub")
             .and_then(Value::as_str)

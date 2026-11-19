@@ -20,6 +20,7 @@ use crate::App;
 use crate::auth::discord::{self, LiveRoles};
 use crate::auth::session;
 use crate::http;
+use crate::reject_log::{self, Reason};
 
 /// 呼び出し側の共有秘密を入れるヘッダー
 const INTROSPECT_HEADER: &str = "x-toro-token";
@@ -36,6 +37,7 @@ async fn dispatch(State(app): State<Arc<App>>, request: Request) -> Response {
     let mut res = match (parts.method.clone(), parts.uri.path()) {
         (Method::GET, "/healthz") => reply(200, &json!({ "ok": true })),
         (Method::POST, "/introspect") if !caller_is_trusted(&app, &parts.headers) => {
+            reject_log::emit("introspect", Reason::SharedSecretMismatch, None, None);
             reply(401, &json!({ "error": "Unauthorized" }))
         }
         (Method::POST, "/introspect") => match to_bytes(body, MAX_BODY_BYTES).await {
@@ -93,7 +95,7 @@ async fn introspect(app: &App, body: &[u8]) -> Response {
     else {
         return reply(400, &json!({ "error": "Field \"token\" is required" }));
     };
-    let Some(session) = session::from_token(app, &token) else {
+    let Some(session) = session::from_token_logged(app, &token, "introspect") else {
         return reply(200, &json!({ "active": false }));
     };
     let user_id = session.id().to_string();
