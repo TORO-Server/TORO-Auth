@@ -11,6 +11,7 @@ use crate::App;
 use crate::auth::session::ACCESS_TOKEN_TYPE;
 use crate::http::{self, Ctx};
 use crate::jwt::{self, Claims, Kind};
+use crate::reject_log::{self, Reason};
 use crate::util::{random_hex, sha256_base64url};
 
 const ACCESS_TOKEN_LIFETIME: i64 = 30 * 86400;
@@ -96,14 +97,47 @@ fn sign_refresh(app: &App, refresh: &Claims, gid: &str, jti: &str, now: i64) -> 
     jwt::sign(&Value::Object(claims), app.cfg.jwt_keys.get(Kind::Refresh))
 }
 
+/// リフレッシュトークンの署名・期限・種類の確認。通らなければ (理由の区分, 読めた期限)。
+/// 鍵の移行期間の間だけ、旧鍵でも確かめる (戻り値の bool が true のとき)。発行は、どちらでも新鍵
+fn verify_refresh(app: &App, token: &str) -> Result<(Claims, bool), (Reason, Option<i64>)> {
+    let current = jwt::check(token, app.cfg.jwt_keys.get(Kind::Refresh));
+    let (checked, legacy) = match (current, app.cfg.legacy_key()) {
+        (Ok(claims), _) => (Ok(claims), false),
+        (Err(first), Some(legacy_key)) => match jwt::check(token, legacy_key) {
+            Ok(claims) => (Ok(claims), true),
+            // 旧鍵では署名が合った (期限切れ・種類違い) なら、そちらが本当の理由
+            Err(second) if second != jwt::Reject::BadSignature => (Err(second), true),
+            Err(_) => (Err(first), false),
+        },
+        (Err(first), None) => (Err(first), false),
+    };
+    match checked {
+        Ok(claims) if claim(&claims, "type") == Some(REFRESH_TOKEN_TYPE) => Ok((claims, legacy)),
+        Ok(claims) => Err((Reason::Other, claims.get("exp").and_then(Value::as_i64))),
+        Err(jwt::Reject::Expired(exp)) => Err((Reason::Expired, Some(exp))),
+        Err(jwt::Reject::BadSignature) => Err((Reason::SignatureMismatch, jwt::peek(token).1)),
+        Err(_) => Err((Reason::Other, None)),
+    }
+}
+
 fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     let Some(refresh_token) = param(params, "refresh_token") else {
         return oauth_error(ctx, "invalid_request", "Missing refresh_token");
     };
-    let Some(mut claims) = jwt::verify(refresh_token, app.cfg.jwt_keys.get(Kind::Refresh))
-        .filter(|claims| claim(claims, "type") == Some(REFRESH_TOKEN_TYPE))
-    else {
-        return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
+    let (mut claims, via_legacy_key) = match verify_refresh(app, refresh_token) {
+        Ok(verified) => verified,
+        Err((reason, exp)) => {
+            reject_log::emit("oauth_token", reason, Some("refresh"), exp);
+            return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
+        }
+    };
+    let log_revoked = |claims: &Claims| {
+        reject_log::emit(
+            "oauth_token",
+            Reason::Revoked,
+            Some("refresh"),
+            claims.get("exp").and_then(Value::as_i64),
+        );
     };
 
     // scope の無いトークンは、本人が発行したトークンの扱いになる。OAuth のトークンには必ず入れる (無ければ読むだけ)
@@ -118,6 +152,7 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     let user = claim(&claims, "id").unwrap_or("").to_string();
     // 使っている間は続き、使わないまま期間を過ぎた連携は、ここで終わる (もう一度ログインして連携する)
     let Some(gid) = claim(&claims, "gid").map(str::to_string) else {
+        log_revoked(&claims);
         return oauth_error(
             ctx,
             "invalid_grant",
@@ -131,10 +166,12 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
     {
         RefreshRotation::Advanced(next) => next,
         RefreshRotation::ReuseDetected => {
+            log_revoked(&claims);
             return oauth_error(ctx, "invalid_grant", "Invalid refresh_token");
         }
         RefreshRotation::SaveFailed => return server_error(ctx),
         RefreshRotation::Invalid => {
+            log_revoked(&claims);
             return oauth_error(
                 ctx,
                 "invalid_grant",
@@ -142,7 +179,15 @@ fn refresh(app: &App, ctx: &Ctx, params: &[(String, String)]) -> Response {
             );
         }
     };
-    // 使っている間は続くよう、リフレッシュトークンも新しくして、署名の期限を延ばす
+    if via_legacy_key {
+        reject_log::emit(
+            "oauth_token",
+            Reason::LegacyKeyAccepted,
+            Some("refresh"),
+            claims.get("exp").and_then(Value::as_i64),
+        );
+    }
+    // 使っている間は続くよう、リフレッシュトークンも新しくして、署名の期限を延ばす (発行は新鍵だけ)
     let new_refresh = sign_refresh(app, &claims, &gid, &next_jti, now);
     if let Some(client_id) = claim(&claims, "client_id").map(str::to_string) {
         claims.insert("aud".into(), json!(client_id));

@@ -19,6 +19,7 @@ pub mod http;
 pub mod internal;
 pub mod jwt;
 pub mod oauth;
+pub mod reject_log;
 pub mod routes;
 pub mod site;
 pub mod static_files;
