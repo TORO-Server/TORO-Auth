@@ -121,7 +121,11 @@ async fn logout_get_and_foreign_post_do_not_revoke() {
     assert!(session_is_valid(&server, &member).await);
 
     // Origin の無い POST や、別オリジン (サブドメインを含む) からの POST は拒否し、失効させない
-    for origin in [None, Some("https://wiki.torosaba.net"), Some("https://evil.example")] {
+    for origin in [
+        None,
+        Some("https://wiki.torosaba.net"),
+        Some("https://evil.example"),
+    ] {
         let mut req = server
             .client
             .post(server.url("/logout"))
