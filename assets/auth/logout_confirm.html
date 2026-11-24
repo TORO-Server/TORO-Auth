@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ログアウト確認 - TORO サーバー</title>
+  <link rel="icon" href="/_assets/favicon.svg?v={{V}}">
+  <link rel="stylesheet" href="/_assets/auth.css?v={{V}}">
+</head>
+<body>
+  <div class="map-bg" aria-hidden="true"></div>
+  <main class="screen screen-narrow">
+    <div class="win help">TORO サーバーからログアウトしますか？</div>
+    <div class="win"><p>実行すると、このブラウザとほかの端末のログイン状態がすべて無効になります。</p></div>
+    <nav class="win" aria-label="ログアウトの確認">
+      <form method="post" action="/logout">
+        <ul class="cmd">
+          <li><button type="submit" class="danger">ログアウトする</button></li>
+          <li><a href="/">はじめの画面へ戻る</a></li>
+        </ul>
+      </form>
+    </nav>
+  </main>
+</body>
+</html>

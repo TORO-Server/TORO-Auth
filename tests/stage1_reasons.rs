@@ -232,8 +232,9 @@ async fn reasons_for_each_rejection() {
     let short = server.session_token(&cookie).await;
     server
         .client
-        .get(server.url("/logout"))
+        .post(server.url("/logout"))
         .header(header::COOKIE, &cookie)
+        .header(header::ORIGIN, &server.base)
         .header(header::ACCEPT, "application/json")
         .send()
         .await

@@ -167,6 +167,7 @@ async fn logout_clears_cookies_in_both_formats() {
     let res = server
         .client
         .post(server.url("/logout"))
+        .header(header::ORIGIN, server.base.as_str())
         .header(header::ACCEPT, "application/json")
         .send()
         .await;
@@ -181,6 +182,17 @@ async fn logout_clears_cookies_in_both_formats() {
     let res = server
         .client
         .get(server.url("/logout"))
+        .header(header::ACCEPT, "text/html")
+        .send()
+        .await;
+    let res = res.unwrap();
+    assert!(set_cookies(&res).is_empty());
+    assert!(res.text().await.unwrap().contains("ログアウトしますか？"));
+
+    let res = server
+        .client
+        .post(server.url("/logout"))
+        .header(header::ORIGIN, server.base.as_str())
         .header(header::ACCEPT, "text/html")
         .send()
         .await;
