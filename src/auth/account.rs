@@ -1,6 +1,7 @@
 //! ログイン後の操作: 自分の情報、ログアウト、AI コネクタ用の API トークン
 
 use axum::http::Method;
+use axum::http::header::{self, HeaderValue};
 use axum::response::Response;
 use serde_json::{Map, Value, json};
 
@@ -11,6 +12,7 @@ use crate::jwt::{self, Kind};
 
 const CONNECTOR_TOKEN_LIFETIME: i64 = 90 * 86400;
 const SESSION_TOKEN_LIFETIME: i64 = 600;
+const CSP_LOGOUT_CONFIRM: &str = "default-src 'none'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https://map.torosaba.net https://cdn.discordapp.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 pub fn me(app: &App, ctx: &Ctx) -> Response {
     let body = match session::from_request(app, ctx) {
@@ -20,9 +22,31 @@ pub fn me(app: &App, ctx: &Ctx) -> Response {
     http::json(ctx, &body, 200)
 }
 
-/// ログアウト。Cookie を消し、そのアカウントのセッションの世代を進める (他の端末のセッションも、盗まれたセッションも通らなくなる)。
+/// ログアウト。
+/// GET は確認画面だけを返し、セッションの失効は auth 自身のページからの POST に限る (他サイトからの踏み抜きを防ぐ)。
+/// Cookie を消し、そのアカウントのセッションの世代を進める (他の端末のセッションも、盗まれたセッションも通らなくなる)。
 /// 90 日トークンと OAuth の連携は、別の仕組みで失効させるので、ここでは変わらない
 pub fn logout(app: &App, ctx: &Ctx) -> Response {
+    if ctx.method == Method::GET {
+        if ctx.accepts_html() {
+            let mut res = http::html(
+                include_str!("../../assets/auth/logout_confirm.html").to_string(),
+                200,
+            );
+            res.headers_mut().insert(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(CSP_LOGOUT_CONFIRM),
+            );
+            return res;
+        }
+        return http::error(ctx, "Method Not Allowed", 405);
+    }
+    if ctx.method != Method::POST {
+        return http::error(ctx, "Method Not Allowed", 405);
+    }
+    if ctx.header(header::ORIGIN) != app.cfg.issuer {
+        return http::error(ctx, "Forbidden", 403);
+    }
     let revoked = match session::from_cookie(app, ctx) {
         Some(session) => app.sessions.advance(session.id()).map(|_| ()),
         None => Ok(()),

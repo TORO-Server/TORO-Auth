@@ -10,8 +10,9 @@ use toro_auth::jwt::{self, Kind};
 async fn logout(server: &TestServer, cookie: &str) -> reqwest::Response {
     server
         .client
-        .get(server.url("/logout"))
+        .post(server.url("/logout"))
         .header(header::COOKIE, cookie)
+        .header(header::ORIGIN, server.base.as_str())
         .header(header::ACCEPT, "application/json")
         .send()
         .await
@@ -76,8 +77,62 @@ async fn logging_out_does_not_touch_other_accounts() {
 async fn logging_out_without_a_session_changes_nothing() {
     let server = start().await;
     let member = server.login("member").await;
-    assert_eq!(server.get("/logout").await.status(), 200);
+    let res = server
+        .client
+        .post(server.url("/logout"))
+        .header(header::ORIGIN, server.base.as_str())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
     assert!(session_is_valid(&server, &member).await);
+}
+
+#[tokio::test]
+async fn logout_get_and_foreign_post_do_not_revoke() {
+    let server = start().await;
+    let member = server.login("member").await;
+
+    // 最上位の GET 遷移 (ブラウザでの閲覧) は確認画面を返すだけで、失効させない
+    let get_html = server
+        .client
+        .get(server.url("/logout"))
+        .header(header::COOKIE, &member)
+        .header(header::ACCEPT, "text/html")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_html.status(), 200);
+    assert!(set_cookies(&get_html).is_empty());
+    let html = get_html.text().await.unwrap();
+    assert!(html.contains(r#"method="post" action="/logout""#));
+    assert!(session_is_valid(&server, &member).await);
+
+    // HTML を受けない GET は 405
+    let get_json = server
+        .client
+        .get(server.url("/logout"))
+        .header(header::COOKIE, &member)
+        .header(header::ACCEPT, "application/json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(get_json.status(), 405);
+    assert!(session_is_valid(&server, &member).await);
+
+    // Origin の無い POST や、別オリジン (サブドメインを含む) からの POST は拒否し、失効させない
+    for origin in [None, Some("https://wiki.torosaba.net"), Some("https://evil.example")] {
+        let mut req = server
+            .client
+            .post(server.url("/logout"))
+            .header(header::COOKIE, &member);
+        if let Some(origin) = origin {
+            req = req.header(header::ORIGIN, origin);
+        }
+        let res = req.send().await.unwrap();
+        assert_eq!(res.status(), 403, "{origin:?}");
+        assert!(session_is_valid(&server, &member).await);
+    }
 }
 
 #[tokio::test]
