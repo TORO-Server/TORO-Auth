@@ -554,10 +554,17 @@ async fn health_checks_answer_even_when_every_slot_is_taken() {
     let address = server.base.strip_prefix("http://").unwrap();
     // ボディを送らないまま待つ接続で、同時処理の枠 (256) をすべて埋める
     let mut streams = Vec::new();
-    for _ in 0..256 {
+    // /oauth/token はレート制限の対象のため、要求ごとに別のクライアント IP を
+    // 入れて制限にかからないようにする。
+    for i in 0..256 {
         let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
         stream
-            .write_all(b"POST /oauth/token HTTP/1.1\r\nHost: x\r\nContent-Length: 10\r\n\r\n")
+            .write_all(
+                format!(
+                    "POST /oauth/token HTTP/1.1\r\nHost: x\r\nX-Toro-Client-Ip: 10.0.{i}.1\r\nContent-Length: 10\r\n\r\n"
+                )
+                .as_bytes(),
+            )
             .await
             .unwrap();
         streams.push(stream);
