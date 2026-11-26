@@ -19,6 +19,7 @@ pub mod http;
 pub mod internal;
 pub mod jwt;
 pub mod oauth;
+pub mod rate_limit;
 pub mod reject_log;
 pub mod routes;
 pub mod site;
@@ -43,6 +44,8 @@ pub struct App {
     /// 使い終わった認可コードの jti と有効期限 (再利用を断るため)
     pub used_codes: Mutex<HashMap<String, i64>>,
     pub requests: Semaphore,
+    /// auth のレート制限 (F-05 c1)。対象は /login、/oauth/register、/oauth/token。
+    pub auth_rate_limit: rate_limit::AuthRateLimit,
     pub tokens: auth::tokens::TokenStore,
     /// ブラウザのセッションの世代 (ログアウトで進めて、前のセッションを失効させる)
     pub sessions: auth::generations::SessionGenerations,
@@ -73,6 +76,7 @@ impl App {
             http,
             used_codes: Mutex::new(HashMap::new()),
             requests: Semaphore::new(MAX_CONCURRENT_REQUESTS),
+            auth_rate_limit: rate_limit::AuthRateLimit::new(),
         })
     }
 

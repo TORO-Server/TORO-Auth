@@ -12,7 +12,7 @@ use axum::response::Response;
 use serde_json::json;
 
 use crate::http::{self, Ctx};
-use crate::{App, auth, home, oauth, static_files};
+use crate::{App, auth, home, oauth, rate_limit, static_files};
 
 const MAX_BODY_BYTES: usize = 2 * 1024 * 1024;
 
@@ -40,6 +40,19 @@ async fn answer(app: &App, request: Request) -> Response {
     if parts.uri.path() == "/healthz" {
         let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
         return http::json(&ctx, &json!({ "ok": true }), 200);
+    }
+    // auth のレート制限 (F-05 c1 の Cloudflare 規則の同等措置)。本体の処理の前に断る。
+    if rate_limit::is_limited_path(parts.uri.path()) {
+        let key = rate_limit::client_key(&parts.headers);
+        if !app.auth_rate_limit.allow(&key) {
+            let ctx = Ctx::new(&parts, Default::default(), &app.cfg);
+            let mut res = http::json(&ctx, &json!({ "error": "Too Many Requests" }), 429);
+            res.headers_mut().insert(
+                header::RETRY_AFTER,
+                HeaderValue::from_static(rate_limit::RETRY_AFTER),
+            );
+            return res;
+        }
     }
     // 同時に処理する数を限り、ボディの分も含めてメモリの使用量に上限を設ける
     let Ok(_permit) = app.requests.try_acquire() else {
